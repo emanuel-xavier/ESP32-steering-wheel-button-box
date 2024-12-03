@@ -1,43 +1,61 @@
-#include <BleConnectionStatus.h>
-#include <BleGamepad.h>
-#include <BleGamepadConfiguration.h>
+#define BOUNCE_WITH_PROMPT_DETECTION
 
-const int pins[] = {32, 33, 25, 26, 27, 14, 13, 4, 16, 17, 18, 19, 21, 22};
-const int numberOfPins = sizeof(pins) / sizeof(pins[0]);
-int buttonPreviousState[numberOfPins];
+#include <Arduino.h>
+#include <Bounce2.h>    // https://github.com/thomasfredericks/Bounce2
+// ESP32-BLE-Gamepad 0.5.4
+// NimBLE-Arduino    1.4.1
+#include <BleGamepad.h> // https://github.com/lemmingDev/ESP32-BLE-Gamepad
 
+#define numOfButtons 14
+
+Bounce debouncers[numOfButtons];
 BleGamepad bleGamepad;
+byte buttonPins[numOfButtons] = {4, 5, 13, 14, 16, 17, 18, 19, 21, 22, 23, 25, 26, 27};
+byte physicalButtons[numOfButtons];
 
 void setup() {
-  Serial.begin(9600);
+    for (byte currentPinIndex = 0; currentPinIndex < numOfButtons; currentPinIndex++) {
+        pinMode(buttonPins[currentPinIndex], INPUT_PULLUP);
+        debouncers[currentPinIndex] = Bounce();
+        debouncers[currentPinIndex].attach(buttonPins[currentPinIndex]);
+        debouncers[currentPinIndex].interval(5);
 
-  for(int i = 0; i < numberOfPins; i++) {
-    pinMode(pins[i], INPUT_PULLUP); 
-    buttonPreviousState[i] = LOW;
-  }
+        physicalButtons[currentPinIndex] = currentPinIndex + 1;
+    }
 
-  bleGamepad.begin();
-  Serial.println("Setup done");
+    BleGamepadConfiguration bleGamepadConfig;
+    bleGamepadConfig.setButtonCount(numOfButtons);
+    bleGamepadConfig.setAutoReport(false);
+    bleGamepadConfig.setButtonCount(numOfButtons);
+
+    bleGamepad.begin(&bleGamepadConfig);
+
+    Serial.begin(115200);
 }
 
 void loop() {
   if (bleGamepad.isConnected()) {
-    for(int i = 0; i < numberOfPins; i++) {
-      int btnCurrentState = digitalRead(pins[i]);
+    bool sendReport = false;
 
-      if (btnCurrentState != buttonPreviousState[i]) {
-        if (btnCurrentState == LOW) {
-          Serial.println("button pressed");
-           bleGamepad.press(BUTTON_1 + i);
-        } else {
-          Serial.println("button released");
-          bleGamepad.release(BUTTON_1 + i);
+    for (byte currentIndex = 0; currentIndex < numOfButtons; currentIndex++)  {
+        debouncers[currentIndex].update();
+
+        if (debouncers[currentIndex].fell())  {
+            bleGamepad.press(physicalButtons[currentIndex]);
+            sendReport = true;
+            Serial.println("Button " + String(physicalButtons[currentIndex]) + " pushed.");
+        } else if (debouncers[currentIndex].rose()) {
+            bleGamepad.release(physicalButtons[currentIndex]);
+            sendReport = true;
+            Serial.println("Button " + String(physicalButtons[currentIndex]) + " released.");
         }
-        buttonPreviousState[i] = btnCurrentState;
       }
+
+      if (sendReport)  {
+          bleGamepad.sendReport();
+      }
+    } else {
+      Serial.println("blegamepad not connected");
+      delay(1000); 
     }
-  } else {
-    Serial.println("bleGamepad is not connected");
-  }
-  delay(10);
 }
