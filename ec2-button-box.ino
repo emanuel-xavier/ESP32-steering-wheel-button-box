@@ -66,28 +66,23 @@ void buttonTask(void *pvParameters) {
 }
 
 void encoderTask(void *pvParameters) {
-  while (1) {
-    bool sendReport = false;
-    for (byte i = 0; i < NUM_OF_ENCODERS; i++) {
-      Encoder::EncoderMovement movement = encoders[i].getEncoderMovement();
-      switch (movement) {
-        case Encoder::clockwise:
-          bleGamepad.press(physicalButtons[encoderBtnStart + i * 2]);
-          sendReport = true;
-          bleGamepad.release(physicalButtons[encoderBtnStart + i * 2]);
-          break;
-
-        case Encoder::anticlockwise:
-          bleGamepad.press(physicalButtons[encoderBtnStart + i * 2 + 1]);
-          sendReport = true;
-          bleGamepad.release(physicalButtons[encoderBtnStart + i * 2 + 1]);
-          break;
-
-        default:
-          break;
+  while (true) {
+    for (int i = 0; i < NUM_OF_ENCODERS; i++) {
+      Encoder::EncoderMovement encoderMovement = encoders[i].getEncoderMovement();
+      if (encoderMovement == Encoder::EncoderMovement::clockwise) {
+        bleGamepad.press(physicalButtons[encoderBtnStart + i]);
+        bleGamepad.sendReport();
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+        bleGamepad.release(physicalButtons[encoderBtnStart + i]);
+        bleGamepad.sendReport();
+      } else if (encoderMovement == Encoder::EncoderMovement::anticlockwise) {
+        bleGamepad.press(physicalButtons[encoderBtnStart + i + 1]);
+        bleGamepad.sendReport();
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+        bleGamepad.release(physicalButtons[encoderBtnStart + i + 1]);
+        bleGamepad.sendReport();
       }
     }
-    if (sendReport) bleGamepad.sendReport();
     vTaskDelay(5 / portTICK_PERIOD_MS);
   }
 }
@@ -129,5 +124,5 @@ void setup() {
 }
 
 void loop() {
-
+  vTaskDelay(portMAX_DELAY);
 }
