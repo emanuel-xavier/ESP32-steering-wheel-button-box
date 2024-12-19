@@ -1,3 +1,5 @@
+// #define SERIAL_DEBUG
+
 #include <Arduino.h>
 #include <Bounce2.h>  // https://github.com/thomasfredericks/Bounce2
 // ESP32-BLE-Gamepad 0.5.4
@@ -48,42 +50,66 @@ Encoder::Encoder encoders[NUM_OF_ENCODERS];
 byte encoderBtnStart = NUM_OF_BUTTONS;
 
 void buttonTask(void *pvParameters) {
-  while (1) {
-    bool sendReport = false;
-    for (byte i = 0; i < NUM_OF_BUTTONS; i++) {
-      debouncers[i].update();
-      if (debouncers[i].fell()) {
-        bleGamepad.press(physicalButtons[i]);
-        sendReport = true;
-      } else if (debouncers[i].rose()) {
-        bleGamepad.release(physicalButtons[i]);
-        sendReport = true;
+  while (true) {
+    if(bleGamepad.isConnected()) {
+      bool sendReport = false;
+      for (byte i = 0; i < NUM_OF_BUTTONS; i++) {
+        debouncers[i].update();
+        if (debouncers[i].fell()) {
+          bleGamepad.press(physicalButtons[i]);
+          sendReport = true;
+          #ifdef SERIAL_DEBUG
+            Serial.printf("Button %d pressed\n", physicalButtons[i]);
+          #endif
+        } else if (debouncers[i].rose()) {
+          bleGamepad.release(physicalButtons[i]);
+          sendReport = true;
+          #ifdef SERIAL_DEBUG
+            Serial.printf("Button %d released\n", physicalButtons[i]);
+          #endif
+        }
       }
+      if (sendReport) bleGamepad.sendReport();
+      vTaskDelay(5 / portTICK_PERIOD_MS);
+    } else {
+      Serial.println("ble not connected");
     }
-    if (sendReport) bleGamepad.sendReport();
-    vTaskDelay(5 / portTICK_PERIOD_MS);
   }
 }
 
 void encoderTask(void *pvParameters) {
   while (true) {
-    for (int i = 0; i < NUM_OF_ENCODERS; i++) {
-      Encoder::EncoderMovement encoderMovement = encoders[i].getEncoderMovement();
-      if (encoderMovement == Encoder::EncoderMovement::clockwise) {
-        bleGamepad.press(physicalButtons[encoderBtnStart + i]);
-        bleGamepad.sendReport();
-        vTaskDelay(10 / portTICK_PERIOD_MS);
-        bleGamepad.release(physicalButtons[encoderBtnStart + i]);
-        bleGamepad.sendReport();
-      } else if (encoderMovement == Encoder::EncoderMovement::anticlockwise) {
-        bleGamepad.press(physicalButtons[encoderBtnStart + i + 1]);
-        bleGamepad.sendReport();
-        vTaskDelay(10 / portTICK_PERIOD_MS);
-        bleGamepad.release(physicalButtons[encoderBtnStart + i + 1]);
-        bleGamepad.sendReport();
+    if(bleGamepad.isConnected()) {
+      for (int i = 0; i < NUM_OF_ENCODERS; i++) {
+        Encoder::EncoderMovement encoderMovement = encoders[i].getEncoderMovement();
+        if (encoderMovement == Encoder::EncoderMovement::clockwise) {
+          bleGamepad.press(physicalButtons[encoderBtnStart + i]);
+          bleGamepad.sendReport();
+          #ifdef SERIAL_DEBUG
+            Serial.printf("Button %d pressed\n", physicalButtons[encoderBtnStart + i]);
+          #endif
+          vTaskDelay(1000 / portTICK_PERIOD_MS);
+          bleGamepad.release(physicalButtons[encoderBtnStart + i]);
+          #ifdef SERIAL_DEBUG
+            Serial.printf("Button %d released\n", physicalButtons[encoderBtnStart + i]);
+          #endif
+          bleGamepad.sendReport();
+        } else if (encoderMovement == Encoder::EncoderMovement::anticlockwise) {
+          bleGamepad.press(physicalButtons[encoderBtnStart + i + 1]);
+          #ifdef SERIAL_DEBUG
+            Serial.printf("Button %d pressed\n", physicalButtons[encoderBtnStart + i + 1]);
+          #endif
+          bleGamepad.sendReport();
+          vTaskDelay(1000 / portTICK_PERIOD_MS);
+          bleGamepad.release(physicalButtons[encoderBtnStart + i + 1]);
+          bleGamepad.sendReport();
+          #ifdef SERIAL_DEBUG
+            Serial.printf("Button %d released\n", physicalButtons[encoderBtnStart + i + 1]);
+          #endif
+        }
       }
+      vTaskDelay(5 / portTICK_PERIOD_MS);
     }
-    vTaskDelay(5 / portTICK_PERIOD_MS);
   }
 }
 
