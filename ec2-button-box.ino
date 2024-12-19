@@ -79,34 +79,32 @@ void buttonTask(void *pvParameters) {
 
 void encoderTask(void *pvParameters) {
   while (true) {
-    if(bleGamepad.isConnected()) {
+    if (bleGamepad.isConnected()) {
       for (int i = 0; i < NUM_OF_ENCODERS; i++) {
         Encoder::EncoderMovement encoderMovement = encoders[i].getEncoderMovement();
-        if (encoderMovement == Encoder::EncoderMovement::clockwise) {
-          bleGamepad.press(physicalButtons[encoderBtnStart + i]);
-          bleGamepad.sendReport();
-          #ifdef SERIAL_DEBUG
-            Serial.printf("Button %d pressed\n", physicalButtons[encoderBtnStart + i]);
-          #endif
-          vTaskDelay(1000 / portTICK_PERIOD_MS);
-          bleGamepad.release(physicalButtons[encoderBtnStart + i]);
-          #ifdef SERIAL_DEBUG
-            Serial.printf("Button %d released\n", physicalButtons[encoderBtnStart + i]);
-          #endif
-          bleGamepad.sendReport();
-        } else if (encoderMovement == Encoder::EncoderMovement::anticlockwise) {
-          bleGamepad.press(physicalButtons[encoderBtnStart + i + 1]);
-          #ifdef SERIAL_DEBUG
-            Serial.printf("Button %d pressed\n", physicalButtons[encoderBtnStart + i + 1]);
-          #endif
-          bleGamepad.sendReport();
-          vTaskDelay(1000 / portTICK_PERIOD_MS);
-          bleGamepad.release(physicalButtons[encoderBtnStart + i + 1]);
-          bleGamepad.sendReport();
-          #ifdef SERIAL_DEBUG
-            Serial.printf("Button %d released\n", physicalButtons[encoderBtnStart + i + 1]);
-          #endif
+        
+        if (encoderMovement == Encoder::EncoderMovement::none) {
+          continue;
         }
+
+        int buttonIndex = encoderBtnStart + i;
+        if (encoderMovement == Encoder::EncoderMovement::anticlockwise) {
+          buttonIndex = encoderBtnStart + i + 1;
+        }
+        
+        bleGamepad.press(physicalButtons[buttonIndex]);
+        #ifdef SERIAL_DEBUG
+          Serial.printf("Button %d pressed\n", physicalButtons[buttonIndex]);
+        #endif
+        bleGamepad.sendReport();
+        
+        vTaskDelay(100 / portTICK_PERIOD_MS);
+        
+        bleGamepad.release(physicalButtons[buttonIndex]);
+        #ifdef SERIAL_DEBUG
+          Serial.printf("Button %d released\n", physicalButtons[buttonIndex]);
+        #endif
+        bleGamepad.sendReport();
       }
       vTaskDelay(5 / portTICK_PERIOD_MS);
     }
