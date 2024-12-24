@@ -87,14 +87,22 @@ void encoderTask(void *pvParameters) {
           continue;
         }
 
-        int buttonIndex = encoderBtnStart + i;
+        int buttonIndex = encoderBtnStart + i * 2;
         if (encoderMovement == Encoder::EncoderMovement::anticlockwise) {
-          buttonIndex = encoderBtnStart + i + 1;
+            buttonIndex += 1;
         }
+        #ifdef SERIAL_DEBUG
+          Serial.printf("Encoder %d\n\tMovement: %s\n\tButtonIndex: %d\n\tphysicalButtons %d\n",
+            i,
+            (encoderMovement == Encoder::EncoderMovement::anticlockwise) ? "Anticlockwise" : "Clockwise",
+            buttonIndex,
+            physicalButtons[buttonIndex]);
+        #endif
         
         bleGamepad.press(physicalButtons[buttonIndex]);
         #ifdef SERIAL_DEBUG
           Serial.printf("Button %d pressed\n", physicalButtons[buttonIndex]);
+          Serial.printf("encoderBtnStart: %d | NUM_OF_ENCODERS: %d | i: ", encoderBtnStart, NUM_OF_ENCODERS, i);
         #endif
         bleGamepad.sendReport();
         
