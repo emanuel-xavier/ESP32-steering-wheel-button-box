@@ -40,7 +40,7 @@ namespace Encoder {
 }
 
 Bounce debouncers[NUM_OF_BUTTONS];
-BleGamepad bleGamepad;
+BleGamepad bleGamepad("ESP32-steering-wheel", "emanuelxavier.dev");
 
 byte buttonPins[NUM_OF_BUTTONS] = {2, 13, 15, 14, 16, 17, 18, 19, 21, 22, 23, 25, 32, 33};
 byte encoderPins[NUM_OF_ENCODERS][2] = {{26, 27}, {4, 5}};
