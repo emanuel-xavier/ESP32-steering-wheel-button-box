@@ -16,6 +16,8 @@ namespace Encoder {
   class Encoder {
     byte clk, dt;
     int lastClk;
+    unsigned long lastDebounceTime = 0;
+    static const unsigned long DEBOUNCE_US = 1000; // 1ms
 
   public:
     Encoder() {}
@@ -24,14 +26,22 @@ namespace Encoder {
     void begin() {
       pinMode(clk, INPUT_PULLUP);
       pinMode(dt, INPUT_PULLUP);
+      lastClk = digitalRead(clk);
     }
 
     EncoderMovement getEncoderMovement() {
       int newClk = digitalRead(clk);
+
       if (newClk != lastClk) {
-        lastClk = newClk;
-        if (newClk == LOW) {
-          return (digitalRead(dt) == HIGH) ? clockwise : anticlockwise;
+        unsigned long now = micros();
+        if ((now - lastDebounceTime) > DEBOUNCE_US) {
+          lastDebounceTime = now;
+          lastClk = newClk;
+          if (newClk == LOW) {
+            return (digitalRead(dt) == HIGH) ? clockwise : anticlockwise;
+          }
+        } else {
+          lastClk = newClk; // still update so it don't get stuck
         }
       }
       return none;
