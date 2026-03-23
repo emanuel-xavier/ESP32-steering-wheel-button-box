@@ -1,4 +1,4 @@
-// #define SERIAL_DEBUG
+#define SERIAL_DEBUG
 
 // ── Boot behaviour ─────────────────────────────────────────────────────────
 // Hold button on pin CONFIG_BOOT_PIN (pin 2, i.e. the first button) while
