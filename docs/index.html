@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>ButtonBox Config</title>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#0f1117;--surface:#1a1d27;--border:#2e3347;
+      --accent:#4f8ef7;--success:#4caf7d;--text:#e2e6f0;--muted:#7b829a;--r:8px;
+    }
+    body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;
+         min-height:100vh;display:flex;flex-direction:column;align-items:center;
+         justify-content:center;padding:2rem 1rem;text-align:center}
+    h1{font-size:1.8rem;font-weight:700;margin-bottom:.5rem}
+    .sub{color:var(--muted);margin-bottom:2.5rem;font-size:.95rem}
+    .steps{display:flex;flex-direction:column;gap:1rem;width:100%;max-width:420px;text-align:left}
+    .step{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
+          padding:1rem 1.2rem;display:flex;gap:1rem;align-items:flex-start}
+    .num{background:var(--accent);color:#fff;font-weight:700;font-size:.85rem;
+         border-radius:50%;width:26px;height:26px;display:flex;align-items:center;
+         justify-content:center;flex-shrink:0;margin-top:1px}
+    .step-body strong{display:block;margin-bottom:.2rem}
+    .step-body span{color:var(--muted);font-size:.88rem}
+    .link-btn{display:inline-block;margin-top:2rem;padding:.7rem 1.6rem;
+              background:var(--accent);color:#fff;border-radius:var(--r);
+              font-weight:600;text-decoration:none;font-size:.95rem}
+    .link-btn:hover{opacity:.85}
+    code{background:var(--surface);border:1px solid var(--border);border-radius:4px;
+         padding:.1rem .4rem;font-size:.88rem}
+    footer{margin-top:3rem;color:var(--muted);font-size:.78rem}
+  </style>
+</head>
+<body>
+  <h1>ButtonBox Config</h1>
+  <p class="sub">ESP32 Steering Wheel &mdash; Wi-Fi Configuration</p>
+
+  <div class="steps">
+    <div class="step">
+      <div class="num">1</div>
+      <div class="step-body">
+        <strong>Enter config mode</strong>
+        <span>Hold <strong>Button 1</strong> (pin 2) while powering on the device.</span>
+      </div>
+    </div>
+    <div class="step">
+      <div class="num">2</div>
+      <div class="step-body">
+        <strong>Connect to the Wi-Fi network</strong>
+        <span>Look for <code>ButtonBox-Config</code> in your Wi-Fi list and connect to it.</span>
+      </div>
+    </div>
+    <div class="step">
+      <div class="num">3</div>
+      <div class="step-body">
+        <strong>Open the config page</strong>
+        <span>Navigate to <code>http://192.168.4.1</code> in any browser.</span>
+      </div>
+    </div>
+    <div class="step">
+      <div class="num">4</div>
+      <div class="step-body">
+        <strong>Save your settings</strong>
+        <span>Edit the values and press <strong>Save &amp; Reboot</strong>. The device reboots as a gamepad.</span>
+      </div>
+    </div>
+  </div>
+
+  <a class="link-btn" href="http://192.168.4.1" target="_blank">Open Config Page &rarr;</a>
+
+  <footer>The config page is served directly by the ESP32 &mdash; only reachable while connected to ButtonBox-Config Wi-Fi.</footer>
+</body>
+</html>

@@ -1,0 +1,182 @@
+// #define SERIAL_DEBUG
+
+// ── Boot behaviour ─────────────────────────────────────────────────────────
+// Hold button on pin CONFIG_BOOT_PIN (pin 2, i.e. the first button) while
+// powering on to enter WiFi config mode. The device creates a WiFi AP named
+// "ButtonBox-Config". Connect to that network and open http://192.168.4.1
+// in any browser to read or update the persisted configuration.
+// The device reboots automatically after saving.
+//
+// Normal boot (pin 2 not held): loads config from NVS and starts the gamepad.
+//
+// Required extra library: ArduinoJson >= 6.x  (Arduino Library Manager)
+
+#include <Arduino.h>
+#include <Bounce2.h>      // https://github.com/thomasfredericks/Bounce2
+// ESP32-BLE-Gamepad 0.5.4
+// NimBLE-Arduino    1.4.1
+#include <BleGamepad.h>
+#include "Config.h"
+#include "ConfigWiFi.h"
+
+#define NUM_OF_BUTTONS   14
+#define NUM_OF_ENCODERS   2
+#define CONFIG_BOOT_PIN   2   // Hold LOW at boot to enter BLE config mode
+
+// ── Encoder ────────────────────────────────────────────────────────────────
+namespace Enc {
+  enum Move { cw, ccw, none };
+
+  class Encoder {
+    byte clk, dt;
+    int  lastClk;
+    unsigned long lastDebounce = 0;
+    unsigned long debounceUs;
+
+  public:
+    Encoder() : clk(0), dt(0), lastClk(HIGH), debounceUs(1000) {}
+    Encoder(byte clk, byte dt, unsigned long debounceUs)
+      : clk(clk), dt(dt), lastClk(HIGH), debounceUs(debounceUs) {}
+
+    void begin() {
+      pinMode(clk, INPUT_PULLUP);
+      pinMode(dt,  INPUT_PULLUP);
+      lastClk = digitalRead(clk);
+    }
+
+    Move read() {
+      int newClk = digitalRead(clk);
+      if (newClk == lastClk) return none;
+
+      unsigned long now = micros();
+      if ((now - lastDebounce) > debounceUs) {
+        lastDebounce = now;
+        lastClk = newClk;
+        if (newClk == LOW)
+          return (digitalRead(dt) == HIGH) ? cw : ccw;
+      } else {
+        lastClk = newClk; // update to avoid getting stuck
+      }
+      return none;
+    }
+  };
+}
+
+// ── Globals ─────────────────────────────────────────────────────────────────
+static Config cfg;
+
+Bounce       debouncers[NUM_OF_BUTTONS];
+BleGamepad   bleGamepad("ESP32-steering-wheel", "emanuelxavier.dev");
+
+byte         buttonPins[NUM_OF_BUTTONS]        = {2, 13, 15, 14, 16, 17, 18, 19, 21, 22, 23, 25, 32, 33};
+byte         encoderPins[NUM_OF_ENCODERS][2]   = {{26, 27}, {4, 5}};
+byte         physicalButtons[NUM_OF_BUTTONS + NUM_OF_ENCODERS * 2];
+
+Enc::Encoder encoders[NUM_OF_ENCODERS];
+const byte   encoderBtnStart = NUM_OF_BUTTONS;
+
+// ── Tasks ───────────────────────────────────────────────────────────────────
+void buttonTask(void*) {
+  while (true) {
+    if (bleGamepad.isConnected()) {
+      bool dirty = false;
+      for (byte i = 0; i < NUM_OF_BUTTONS; i++) {
+        debouncers[i].update();
+        if (debouncers[i].fell()) {
+          bleGamepad.press(physicalButtons[i]);
+          dirty = true;
+          #ifdef SERIAL_DEBUG
+            Serial.printf("Button %d pressed\n", physicalButtons[i]);
+          #endif
+        } else if (debouncers[i].rose()) {
+          bleGamepad.release(physicalButtons[i]);
+          dirty = true;
+          #ifdef SERIAL_DEBUG
+            Serial.printf("Button %d released\n", physicalButtons[i]);
+          #endif
+        }
+      }
+      if (dirty) bleGamepad.sendReport();
+    }
+    #ifdef SERIAL_DEBUG
+    else { Serial.println("BLE not connected"); }
+    #endif
+    vTaskDelay(cfg.buttonTaskDelayMs / portTICK_PERIOD_MS);
+  }
+}
+
+void encoderTask(void*) {
+  while (true) {
+    if (bleGamepad.isConnected()) {
+      for (int i = 0; i < NUM_OF_ENCODERS; i++) {
+        Enc::Move m = encoders[i].read();
+        if (m == Enc::none) continue;
+
+        byte idx = encoderBtnStart + i * 2 + (m == Enc::ccw ? 1 : 0);
+        #ifdef SERIAL_DEBUG
+          Serial.printf("Encoder %d %s -> button %d\n",
+            i, (m == Enc::ccw) ? "CCW" : "CW", physicalButtons[idx]);
+        #endif
+        bleGamepad.press(physicalButtons[idx]);
+        bleGamepad.sendReport();
+        vTaskDelay(cfg.encoderPressDurationMs / portTICK_PERIOD_MS);
+        bleGamepad.release(physicalButtons[idx]);
+        bleGamepad.sendReport();
+      }
+    }
+    vTaskDelay(cfg.encoderTaskDelayMs / portTICK_PERIOD_MS);
+  }
+}
+
+// ── Setup helpers ────────────────────────────────────────────────────────────
+void setupButtons() {
+  for (byte i = 0; i < NUM_OF_BUTTONS; i++) {
+    pinMode(buttonPins[i], INPUT_PULLUP);
+    debouncers[i].attach(buttonPins[i]);
+    debouncers[i].interval(cfg.debounceDelayMs);
+  }
+}
+
+void setupEncoders() {
+  for (byte i = 0; i < NUM_OF_ENCODERS; i++) {
+    encoders[i] = Enc::Encoder(encoderPins[i][0], encoderPins[i][1], cfg.encoderDebounceUs);
+    encoders[i].begin();
+  }
+}
+
+void setupBleGamepad() {
+  int totalButtons = NUM_OF_BUTTONS + (cfg.useEncoders ? NUM_OF_ENCODERS * 2 : 0);
+  BleGamepadConfiguration gcfg;
+  gcfg.setButtonCount(totalButtons);
+  gcfg.setAutoReport(false);
+  bleGamepad.begin(&gcfg);
+}
+
+// ── Entry point ──────────────────────────────────────────────────────────────
+void setup() {
+  Serial.begin(115200);
+
+  // Config mode: hold first button (pin 2) LOW while powering on
+  pinMode(CONFIG_BOOT_PIN, INPUT_PULLUP);
+  delay(100); // let pin settle after power-on
+  if (digitalRead(CONFIG_BOOT_PIN) == LOW) {
+    startConfigMode(); // never returns
+  }
+
+  cfg = loadConfig();
+
+  setupButtons();
+  if (cfg.useEncoders) setupEncoders();
+  setupBleGamepad();
+
+  for (byte i = 0; i < NUM_OF_BUTTONS + NUM_OF_ENCODERS * 2; i++)
+    physicalButtons[i] = i + 1;
+
+  xTaskCreate(buttonTask,  "ButtonTask",  2048, NULL, 1, NULL);
+  if (cfg.useEncoders)
+    xTaskCreate(encoderTask, "EncoderTask", 2048, NULL, 1, NULL);
+}
+
+void loop() {
+  vTaskDelay(portMAX_DELAY);
+}
