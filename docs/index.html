@@ -24,6 +24,13 @@
            font-weight:600;border:1px solid var(--border);color:var(--muted)}
     .badge.blue{border-color:#4f8ef755;color:var(--accent);background:#4f8ef710}
 
+    /* note box */
+    .note{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--accent);
+          border-radius:var(--r);padding:1rem 1.2rem;width:100%;max-width:560px;margin-top:1rem;font-size:.85rem}
+    .note strong{display:block;margin-bottom:.35rem;font-size:.88rem}
+    .note ul{margin:.3rem 0 0 1.1rem;color:var(--muted);display:flex;flex-direction:column;gap:.2rem}
+    .note a{color:var(--accent)}
+
     /* cards */
     .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
           padding:1.5rem;width:100%;max-width:560px}
@@ -99,7 +106,7 @@
       <div class="num">3</div>
       <div class="step-body">
         <strong>Open the config page</strong>
-        <span>Navigate to <code>http://192.168.4.1</code> in any browser — the page is served by the ESP32 itself.</span>
+        <span>Navigate to <code>http://buttonbox.local</code> or <code>http://192.168.4.1</code> in any browser — the page is served by the ESP32 itself.</span>
       </div>
     </div>
     <div class="step">
@@ -142,9 +149,23 @@
   </div>
 </div>
 
+<div class="note">
+  <strong>How <code>buttonbox.local</code> works</strong>
+  The ESP32 advertises itself on the local network using <strong>mDNS</strong> (multicast DNS), so you can
+  reach it by name instead of memorising its IP address.
+  <ul>
+    <li><strong>macOS &amp; Linux</strong> — works out of the box, no setup needed.</li>
+    <li><strong>Windows 10 / 11</strong> — requires the <strong>Bonjour</strong> service.
+        It ships with the <em>Apple Devices</em> app (Microsoft Store) or iTunes.
+        Without it, use the IP address <code>http://192.168.4.1</code> instead.</li>
+    <li><strong>Android / iOS</strong> — most browsers resolve <code>.local</code> natively.</li>
+  </ul>
+</div>
+
 <div class="btn-row">
-  <a class="btn btn-primary" href="http://192.168.4.1" target="_blank">Open Config Page &rarr;</a>
-  <a class="btn btn-ghost" href="https://github.com/emanuel-xavier/ESP32-steering-wheel-button-box" target="_blank">View on GitHub</a>
+  <a class="btn btn-primary" href="http://buttonbox.local" target="_blank">Open Config Page &rarr;</a>
+  <a class="btn btn-ghost"   href="http://192.168.4.1"    target="_blank">Use IP address</a>
+  <a class="btn btn-ghost"   href="https://github.com/emanuel-xavier/ESP32-steering-wheel-button-box" target="_blank">View on GitHub</a>
 </div>
 
 <footer>

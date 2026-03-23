@@ -10,6 +10,7 @@
 
 #include <WiFi.h>
 #include <WebServer.h>
+#include <ESPmDNS.h>
 #include "Config.h"
 
 static WebServer _cfgServer(80);
@@ -332,6 +333,11 @@ static const char _CFG_HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
 )rawhtml";
 
 // ── HTTP handlers ─────────────────────────────────────────────────────────────
+static void _handlePing() {
+  _cfgServer.sendHeader("Access-Control-Allow-Origin", "*");
+  _cfgServer.send(200, "application/json", "{\"device\":\"ButtonBox\",\"ok\":true}");
+}
+
 static void _handleRoot() {
   _cfgServer.send_P(200, "text/html", _CFG_HTML);
 }
@@ -376,9 +382,17 @@ inline void startConfigMode() {
   #endif
 
   _cfgServer.on("/",       HTTP_GET,  _handleRoot);
+  _cfgServer.on("/ping",   HTTP_GET,  _handlePing);
   _cfgServer.on("/config", HTTP_GET,  _handleGetConfig);
   _cfgServer.on("/config", HTTP_POST, _handlePostConfig);
   _cfgServer.begin();
+
+  if (MDNS.begin("buttonbox")) {
+    MDNS.addService("http", "tcp", 80);
+    #ifdef SERIAL_DEBUG
+      Serial.println("[Config] mDNS started — http://buttonbox.local");
+    #endif
+  }
 
   #ifdef SERIAL_DEBUG
     Serial.println("[Config] Open http://192.168.4.1 in any browser.");
