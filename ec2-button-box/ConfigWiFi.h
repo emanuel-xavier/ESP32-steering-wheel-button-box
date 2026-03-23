@@ -126,11 +126,11 @@ static const char _CFG_HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
       <input type="hidden" id="encoderZoneMaster" value="0"/>
       <div class="field">
         <label><span>Zone Steps</span><small>Total steps of the master encoder</small></label>
-        <input type="number" id="encoderZoneSteps" min="2" max="200" value="20"/>
+        <input type="number" id="encoderZoneSteps" min="2" max="200" value="20" onchange="updateZoneCountOptions()"/>
       </div>
       <div class="field">
-        <label><span>Zone Count</span><small>Number of intervals to split steps into</small></label>
-        <input type="number" id="encoderZoneCount" min="2" max="8" value="2"/>
+        <label><span>Zone Count</span><small>Only divisors of Zone Steps are valid</small></label>
+        <select id="encoderZoneCount" style="width:90px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:.4rem .55rem;font-size:.95rem;outline:none"></select>
       </div>
     </div>
 
@@ -173,6 +173,22 @@ static const char _CFG_HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
     document.getElementById('encoderOptions').classList.toggle('hidden', !on);
   }
 
+  function updateZoneCountOptions() {
+    const steps = Number(document.getElementById('encoderZoneSteps').value) || 20;
+    const select = document.getElementById('encoderZoneCount');
+    const prev = Number(select.value);
+    select.innerHTML = '';
+    for (let i = 2; i <= steps; i++) {
+      if (steps % i === 0) {
+        const opt = document.createElement('option');
+        opt.value = i; opt.textContent = i;
+        select.appendChild(opt);
+      }
+    }
+    // keep previous value if still valid, otherwise pick first option
+    select.value = (steps % prev === 0 && prev >= 2) ? prev : select.options[0].value;
+  }
+
   function setMaster(idx) {
     document.getElementById('encoderZoneMaster').value = idx;
     document.getElementById('masterEnc0').classList.toggle('active', idx === 0);
@@ -188,11 +204,15 @@ static const char _CFG_HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
 
   function populateForm(cfg) {
     for (const k of FIELDS) {
+      if (k === 'encoderZoneCount') continue; // handled separately below
       if (cfg[k] === undefined) continue;
       const el = document.getElementById(k);
       if (!el) continue;
       el.type === 'checkbox' ? (el.checked = cfg[k]) : (el.value = cfg[k]);
     }
+    updateZoneCountOptions();
+    if (cfg.encoderZoneCount !== undefined)
+      document.getElementById('encoderZoneCount').value = cfg.encoderZoneCount;
     if (cfg.encoderZonesMode  !== undefined) setMode(cfg.encoderZonesMode);
     if (cfg.encoderZoneMaster !== undefined) setMaster(cfg.encoderZoneMaster);
     onEncoderToggle();
@@ -241,6 +261,7 @@ static const char _CFG_HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
   }
 
   setMode(false);
+  updateZoneCountOptions();
   loadConfig();
 </script>
 </body>
@@ -263,6 +284,10 @@ static void _handlePostConfig() {
   }
   Config cfg = loadConfig();
   if (jsonToConfig(_cfgServer.arg("plain"), cfg)) {
+    if (cfg.encoderZonesMode && cfg.encoderZoneSteps % cfg.encoderZoneCount != 0) {
+      _cfgServer.send(400, "application/json", "{\"error\":\"zoneCount must be a divisor of zoneSteps\"}");
+      return;
+    }
     saveConfig(cfg);
     _cfgServer.send(200, "application/json", "{\"ok\":true}");
     #ifdef SERIAL_DEBUG
