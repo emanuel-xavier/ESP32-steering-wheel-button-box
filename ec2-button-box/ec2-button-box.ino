@@ -98,18 +98,21 @@ void encoderZonesTask(void*) {
   int position = 0;
   while (true) {
     if (bleGamepad.isConnected()) {
-      Enc::Move m1 = encoders[0].read();
+      int master = (int)cfg.encoderZoneMaster;
+      int slave  = 1 - master;
+
+      Enc::Move m1 = encoders[master].read();
       if (m1 == Enc::cw)  position = (position + 1) % (int)cfg.encoderZoneSteps;
       if (m1 == Enc::ccw) position = (position - 1 + (int)cfg.encoderZoneSteps) % (int)cfg.encoderZoneSteps;
 
       int zone = (position * (int)cfg.encoderZoneCount) / (int)cfg.encoderZoneSteps;
 
-      Enc::Move m2 = encoders[1].read();
+      Enc::Move m2 = encoders[slave].read();
       if (m2 != Enc::none) {
         byte idx = encoderBtnStart + zone * 2 + (m2 == Enc::ccw ? 1 : 0);
         #ifdef SERIAL_DEBUG
-          Serial.printf("Zone %d | Enc2 %s -> btn %d\n",
-            zone, (m2 == Enc::ccw) ? "CCW" : "CW", physicalButtons[idx]);
+          Serial.printf("Zone %d | Enc%d %s -> btn %d\n",
+            zone, slave, (m2 == Enc::ccw) ? "CCW" : "CW", physicalButtons[idx]);
         #endif
         bleGamepad.press(physicalButtons[idx]);
         bleGamepad.sendReport();

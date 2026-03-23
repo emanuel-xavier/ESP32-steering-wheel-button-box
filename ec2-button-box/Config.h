@@ -13,7 +13,8 @@ struct Config {
   // Zones mode: encoder 1 selects the active zone; encoder 2 triggers zone-mapped buttons.
   // Mutually exclusive with normal encoder mode — select one via encoderZonesMode.
   bool     encoderZonesMode       = false;
-  uint32_t encoderZoneSteps       = 20;    // total steps of the selector encoder (encoder 1)
+  uint32_t encoderZoneMaster      = 0;     // index of the selector encoder (0 or 1)
+  uint32_t encoderZoneSteps       = 20;    // total steps of the selector encoder
   uint32_t encoderZoneCount       = 2;     // number of zones to divide those steps into
 };
 
@@ -28,6 +29,7 @@ inline Config loadConfig() {
   cfg.encoderPressDurationMs = prefs.getUInt("encPressMs",     cfg.encoderPressDurationMs);
   cfg.encoderTaskDelayMs     = prefs.getUInt("encTaskMs",      cfg.encoderTaskDelayMs);
   cfg.encoderZonesMode       = prefs.getBool("encZonesMode",   cfg.encoderZonesMode);
+  cfg.encoderZoneMaster      = prefs.getUInt("encZoneMaster",  cfg.encoderZoneMaster);
   cfg.encoderZoneSteps       = prefs.getUInt("encZoneSteps",   cfg.encoderZoneSteps);
   cfg.encoderZoneCount       = prefs.getUInt("encZoneCount",   cfg.encoderZoneCount);
   prefs.end();
@@ -44,6 +46,7 @@ inline void saveConfig(const Config& cfg) {
   prefs.putUInt("encPressMs",     cfg.encoderPressDurationMs);
   prefs.putUInt("encTaskMs",      cfg.encoderTaskDelayMs);
   prefs.putBool("encZonesMode",   cfg.encoderZonesMode);
+  prefs.putUInt("encZoneMaster",  cfg.encoderZoneMaster);
   prefs.putUInt("encZoneSteps",   cfg.encoderZoneSteps);
   prefs.putUInt("encZoneCount",   cfg.encoderZoneCount);
   prefs.end();
@@ -58,6 +61,7 @@ inline String configToJson(const Config& cfg) {
   doc["encoderPressDurationMs"] = cfg.encoderPressDurationMs;
   doc["encoderTaskDelayMs"]     = cfg.encoderTaskDelayMs;
   doc["encoderZonesMode"]       = cfg.encoderZonesMode;
+  doc["encoderZoneMaster"]      = cfg.encoderZoneMaster;
   doc["encoderZoneSteps"]       = cfg.encoderZoneSteps;
   doc["encoderZoneCount"]       = cfg.encoderZoneCount;
   String out;
@@ -75,6 +79,7 @@ inline bool jsonToConfig(const String& json, Config& cfg) {
   if (doc.containsKey("encoderPressDurationMs")) cfg.encoderPressDurationMs = doc["encoderPressDurationMs"].as<uint32_t>();
   if (doc.containsKey("encoderTaskDelayMs"))     cfg.encoderTaskDelayMs     = doc["encoderTaskDelayMs"].as<uint32_t>();
   if (doc.containsKey("encoderZonesMode"))       cfg.encoderZonesMode       = doc["encoderZonesMode"].as<bool>();
+  if (doc.containsKey("encoderZoneMaster"))      cfg.encoderZoneMaster      = doc["encoderZoneMaster"].as<uint32_t>();
   if (doc.containsKey("encoderZoneSteps"))       cfg.encoderZoneSteps       = doc["encoderZoneSteps"].as<uint32_t>();
   if (doc.containsKey("encoderZoneCount"))       cfg.encoderZoneCount       = doc["encoderZoneCount"].as<uint32_t>();
   return true;

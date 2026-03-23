@@ -117,7 +117,15 @@ static const char _CFG_HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
 
     <div id="zonesFields">
       <div class="field">
-        <label><span>Zone Steps</span><small>Total steps of selector encoder (enc 1)</small></label>
+        <label><span>Master Encoder</span><small>Selector encoder that sets the active zone</small></label>
+        <div class="mode-select">
+          <div class="mode-btn active" id="masterEnc0" onclick="setMaster(0)">Encoder 1</div>
+          <div class="mode-btn"        id="masterEnc1" onclick="setMaster(1)">Encoder 2</div>
+        </div>
+      </div>
+      <input type="hidden" id="encoderZoneMaster" value="0"/>
+      <div class="field">
+        <label><span>Zone Steps</span><small>Total steps of the master encoder</small></label>
         <input type="number" id="encoderZoneSteps" min="2" max="200" value="20"/>
       </div>
       <div class="field">
@@ -154,6 +162,7 @@ static const char _CFG_HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
                   'buttonTaskDelayMs','encoderPressDurationMs','encoderTaskDelayMs',
                   'encoderZoneSteps','encoderZoneCount'];
 
+
   function setStatus(msg, type) {
     const el = document.getElementById('status');
     el.className = type; el.textContent = msg;
@@ -162,6 +171,12 @@ static const char _CFG_HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
   function onEncoderToggle() {
     const on = document.getElementById('useEncoders').checked;
     document.getElementById('encoderOptions').classList.toggle('hidden', !on);
+  }
+
+  function setMaster(idx) {
+    document.getElementById('encoderZoneMaster').value = idx;
+    document.getElementById('masterEnc0').classList.toggle('active', idx === 0);
+    document.getElementById('masterEnc1').classList.toggle('active', idx === 1);
   }
 
   function setMode(zones) {
@@ -178,7 +193,8 @@ static const char _CFG_HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
       if (!el) continue;
       el.type === 'checkbox' ? (el.checked = cfg[k]) : (el.value = cfg[k]);
     }
-    if (cfg.encoderZonesMode !== undefined) setMode(cfg.encoderZonesMode);
+    if (cfg.encoderZonesMode  !== undefined) setMode(cfg.encoderZonesMode);
+    if (cfg.encoderZoneMaster !== undefined) setMaster(cfg.encoderZoneMaster);
     onEncoderToggle();
   }
 
@@ -189,7 +205,8 @@ static const char _CFG_HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
       if (!el) continue;
       cfg[k] = el.type === 'checkbox' ? el.checked : Number(el.value);
     }
-    cfg.encoderZonesMode = document.getElementById('encoderZonesMode').value === 'true';
+    cfg.encoderZonesMode  = document.getElementById('encoderZonesMode').value === 'true';
+    cfg.encoderZoneMaster = Number(document.getElementById('encoderZoneMaster').value);
     return cfg;
   }
 
