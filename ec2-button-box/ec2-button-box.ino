@@ -32,7 +32,8 @@ BleGamepad   bleGamepad("ESP32-steering-wheel", "emanuelxavier.dev");
 
 byte         buttonPins[NUM_OF_BUTTONS]        = {2, 13, 15, 14, 16, 17, 18, 19, 21, 22, 23, 25, 32, 33};
 byte         encoderPins[NUM_OF_ENCODERS][2]   = {{26, 27}, {4, 5}};
-byte         physicalButtons[NUM_OF_BUTTONS + NUM_OF_ENCODERS * 2];
+#define MAX_ENC_BUTTONS  16  // supports up to 8 zones
+byte         physicalButtons[NUM_OF_BUTTONS + MAX_ENC_BUTTONS];
 
 Enc::Encoder encoders[NUM_OF_ENCODERS];
 const byte   encoderBtnStart = NUM_OF_BUTTONS;
@@ -90,6 +91,37 @@ void encoderTask(void*) {
   }
 }
 
+// Zones mode: encoder 1 tracks absolute position and determines the active zone.
+// Encoder 2 triggers zone-specific buttons instead of fixed CW/CCW buttons.
+// Button layout: physicalButtons[encoderBtnStart + zone*2 + (ccw?1:0)]
+void encoderZonesTask(void*) {
+  int position = 0;
+  while (true) {
+    if (bleGamepad.isConnected()) {
+      Enc::Move m1 = encoders[0].read();
+      if (m1 == Enc::cw)  position = (position + 1) % (int)cfg.encoderZoneSteps;
+      if (m1 == Enc::ccw) position = (position - 1 + (int)cfg.encoderZoneSteps) % (int)cfg.encoderZoneSteps;
+
+      int zone = (position * (int)cfg.encoderZoneCount) / (int)cfg.encoderZoneSteps;
+
+      Enc::Move m2 = encoders[1].read();
+      if (m2 != Enc::none) {
+        byte idx = encoderBtnStart + zone * 2 + (m2 == Enc::ccw ? 1 : 0);
+        #ifdef SERIAL_DEBUG
+          Serial.printf("Zone %d | Enc2 %s -> btn %d\n",
+            zone, (m2 == Enc::ccw) ? "CCW" : "CW", physicalButtons[idx]);
+        #endif
+        bleGamepad.press(physicalButtons[idx]);
+        bleGamepad.sendReport();
+        vTaskDelay(cfg.encoderPressDurationMs / portTICK_PERIOD_MS);
+        bleGamepad.release(physicalButtons[idx]);
+        bleGamepad.sendReport();
+      }
+    }
+    vTaskDelay(cfg.encoderTaskDelayMs / portTICK_PERIOD_MS);
+  }
+}
+
 // ── Setup helpers ────────────────────────────────────────────────────────────
 void setupButtons() {
   for (byte i = 0; i < NUM_OF_BUTTONS; i++) {
@@ -107,9 +139,11 @@ void setupEncoders() {
 }
 
 void setupBleGamepad() {
-  int totalButtons = NUM_OF_BUTTONS + (cfg.useEncoders ? NUM_OF_ENCODERS * 2 : 0);
+  int encButtons = 0;
+  if (cfg.useEncoders)
+    encButtons = cfg.encoderZonesMode ? (int)cfg.encoderZoneCount * 2 : NUM_OF_ENCODERS * 2;
   BleGamepadConfiguration gcfg;
-  gcfg.setButtonCount(totalButtons);
+  gcfg.setButtonCount(NUM_OF_BUTTONS + encButtons);
   gcfg.setAutoReport(false);
   bleGamepad.begin(&gcfg);
 }
@@ -131,12 +165,16 @@ void setup() {
   if (cfg.useEncoders) setupEncoders();
   setupBleGamepad();
 
-  for (byte i = 0; i < NUM_OF_BUTTONS + NUM_OF_ENCODERS * 2; i++)
+  for (byte i = 0; i < NUM_OF_BUTTONS + MAX_ENC_BUTTONS; i++)
     physicalButtons[i] = i + 1;
 
-  xTaskCreate(buttonTask,  "ButtonTask",  4096, NULL, 1, NULL);
-  if (cfg.useEncoders)
-    xTaskCreate(encoderTask, "EncoderTask", 4096, NULL, 1, NULL);
+  xTaskCreate(buttonTask, "ButtonTask", 4096, NULL, 1, NULL);
+  if (cfg.useEncoders) {
+    if (cfg.encoderZonesMode)
+      xTaskCreate(encoderZonesTask, "EncZonesTask", 4096, NULL, 1, NULL);
+    else
+      xTaskCreate(encoderTask, "EncoderTask", 4096, NULL, 1, NULL);
+  }
 }
 
 void loop() {

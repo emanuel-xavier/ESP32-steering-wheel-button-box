@@ -72,6 +72,12 @@ static const char _CFG_HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
     #status.ok{background:#1a3028;color:var(--success);display:block}
     #status.error{background:#3a1a1a;color:var(--danger);display:block}
     footer{margin-top:2.5rem;color:var(--muted);font-size:.78rem;text-align:center}
+    .mode-select{display:flex;gap:.4rem}
+    .mode-btn{flex:1;padding:.4rem;border-radius:6px;border:1px solid var(--border);
+              background:var(--bg);color:var(--muted);font-size:.85rem;cursor:pointer;
+              text-align:center;transition:all .15s}
+    .mode-btn.active{border-color:var(--accent);color:var(--accent);background:#1e2d4a}
+    .hidden{display:none!important}
   </style>
 </head>
 <body>
@@ -81,31 +87,59 @@ static const char _CFG_HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
 </header>
 
 <div class="card">
-  <h2>Settings</h2>
-  <div class="field">
-    <label><span>Use Encoders</span><small>Enable / disable rotary encoders</small></label>
-    <label class="toggle"><input type="checkbox" id="useEncoders" checked/><span class="slider"></span></label>
-  </div>
+  <h2>Buttons</h2>
   <div class="field">
     <label><span>Button Debounce</span><small>Bounce2 interval (ms)</small></label>
     <input type="number" id="debounceDelayMs" min="0" max="100" value="5"/>
   </div>
   <div class="field">
-    <label><span>Encoder Debounce</span><small>Hardware encoder filter (&micro;s)</small></label>
-    <input type="number" id="encoderDebounceUs" min="0" max="50000" value="1000"/>
-  </div>
-  <div class="field">
     <label><span>Button Task Interval</span><small>Button polling delay (ms)</small></label>
     <input type="number" id="buttonTaskDelayMs" min="1" max="500" value="5"/>
   </div>
+</div>
+
+<div class="card">
+  <h2>Encoders</h2>
   <div class="field">
-    <label><span>Encoder Press Duration</span><small>Simulated key-press length (ms)</small></label>
-    <input type="number" id="encoderPressDurationMs" min="10" max="1000" value="100"/>
+    <label><span>Use Encoders</span><small>Enable / disable rotary encoders</small></label>
+    <label class="toggle"><input type="checkbox" id="useEncoders" onchange="onEncoderToggle()"/><span class="slider"></span></label>
   </div>
-  <div class="field">
-    <label><span>Encoder Task Interval</span><small>Encoder polling delay (ms)</small></label>
-    <input type="number" id="encoderTaskDelayMs" min="1" max="500" value="5"/>
+
+  <div id="encoderOptions">
+    <div class="field">
+      <label><span>Encoder Mode</span><small>Select how encoders behave</small></label>
+      <div class="mode-select">
+        <div class="mode-btn active" id="modeNormal" onclick="setMode(false)">Normal</div>
+        <div class="mode-btn"        id="modeZones"  onclick="setMode(true)">Zones</div>
+      </div>
+    </div>
+    <input type="hidden" id="encoderZonesMode" value="false"/>
+
+    <div id="zonesFields">
+      <div class="field">
+        <label><span>Zone Steps</span><small>Total steps of selector encoder (enc 1)</small></label>
+        <input type="number" id="encoderZoneSteps" min="2" max="200" value="20"/>
+      </div>
+      <div class="field">
+        <label><span>Zone Count</span><small>Number of intervals to split steps into</small></label>
+        <input type="number" id="encoderZoneCount" min="2" max="8" value="2"/>
+      </div>
+    </div>
+
+    <div class="field">
+      <label><span>Encoder Debounce</span><small>Hardware encoder filter (&micro;s)</small></label>
+      <input type="number" id="encoderDebounceUs" min="0" max="50000" value="1000"/>
+    </div>
+    <div class="field">
+      <label><span>Encoder Press Duration</span><small>Simulated key-press length (ms)</small></label>
+      <input type="number" id="encoderPressDurationMs" min="10" max="1000" value="100"/>
+    </div>
+    <div class="field">
+      <label><span>Encoder Task Interval</span><small>Encoder polling delay (ms)</small></label>
+      <input type="number" id="encoderTaskDelayMs" min="1" max="500" value="5"/>
+    </div>
   </div>
+
   <div class="actions">
     <button class="btn btn-primary" id="btnSave" onclick="saveConfig()">Save &amp; Reboot</button>
     <button class="btn btn-ghost"   onclick="loadConfig()">Refresh</button>
@@ -117,27 +151,45 @@ static const char _CFG_HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
 
 <script>
   const FIELDS = ['useEncoders','debounceDelayMs','encoderDebounceUs',
-                  'buttonTaskDelayMs','encoderPressDurationMs','encoderTaskDelayMs'];
+                  'buttonTaskDelayMs','encoderPressDurationMs','encoderTaskDelayMs',
+                  'encoderZoneSteps','encoderZoneCount'];
 
   function setStatus(msg, type) {
     const el = document.getElementById('status');
     el.className = type; el.textContent = msg;
   }
 
+  function onEncoderToggle() {
+    const on = document.getElementById('useEncoders').checked;
+    document.getElementById('encoderOptions').classList.toggle('hidden', !on);
+  }
+
+  function setMode(zones) {
+    document.getElementById('encoderZonesMode').value = zones ? 'true' : 'false';
+    document.getElementById('modeNormal').classList.toggle('active', !zones);
+    document.getElementById('modeZones').classList.toggle('active',  zones);
+    document.getElementById('zonesFields').classList.toggle('hidden', !zones);
+  }
+
   function populateForm(cfg) {
     for (const k of FIELDS) {
       if (cfg[k] === undefined) continue;
       const el = document.getElementById(k);
+      if (!el) continue;
       el.type === 'checkbox' ? (el.checked = cfg[k]) : (el.value = cfg[k]);
     }
+    if (cfg.encoderZonesMode !== undefined) setMode(cfg.encoderZonesMode);
+    onEncoderToggle();
   }
 
   function readForm() {
     const cfg = {};
     for (const k of FIELDS) {
       const el = document.getElementById(k);
+      if (!el) continue;
       cfg[k] = el.type === 'checkbox' ? el.checked : Number(el.value);
     }
+    cfg.encoderZonesMode = document.getElementById('encoderZonesMode').value === 'true';
     return cfg;
   }
 
@@ -171,6 +223,7 @@ static const char _CFG_HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
     }
   }
 
+  setMode(false);
   loadConfig();
 </script>
 </body>
