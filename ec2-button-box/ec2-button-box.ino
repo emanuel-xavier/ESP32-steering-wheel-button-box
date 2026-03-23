@@ -22,7 +22,7 @@
 
 #define NUM_OF_BUTTONS   14
 #define NUM_OF_ENCODERS   2
-#define CONFIG_BOOT_PIN   2   // Hold LOW at boot to enter WiFi config mode
+#define CONFIG_BOOT_PIN   25   // Hold LOW at boot to enter WiFi config mode
 
 // ── Globals ─────────────────────────────────────────────────────────────────
 static Config cfg;
@@ -134,9 +134,9 @@ void setup() {
   for (byte i = 0; i < NUM_OF_BUTTONS + NUM_OF_ENCODERS * 2; i++)
     physicalButtons[i] = i + 1;
 
-  xTaskCreate(buttonTask,  "ButtonTask",  2048, NULL, 1, NULL);
+  xTaskCreate(buttonTask,  "ButtonTask",  4096, NULL, 1, NULL);
   if (cfg.useEncoders)
-    xTaskCreate(encoderTask, "EncoderTask", 2048, NULL, 1, NULL);
+    xTaskCreate(encoderTask, "EncoderTask", 4096, NULL, 1, NULL);
 }
 
 void loop() {
