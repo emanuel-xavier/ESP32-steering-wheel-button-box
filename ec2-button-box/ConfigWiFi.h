@@ -87,6 +87,15 @@ static const char _CFG_HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
 </header>
 
 <div class="card">
+  <h2>Device</h2>
+  <div class="field">
+    <label><span>Bluetooth Name</span><small>Name shown when pairing</small></label>
+    <input type="text" id="bleDeviceName" maxlength="32" value="ESP32-steering-wheel"
+           style="width:190px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:.4rem .55rem;font-size:.88rem;outline:none"/>
+  </div>
+</div>
+
+<div class="card">
   <h2>Buttons</h2>
   <div class="field">
     <label><span>Button Debounce</span><small>Bounce2 interval (ms)</small></label>
@@ -165,7 +174,7 @@ static const char _CFG_HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
 <footer>Connected via Wi-Fi &mdash; ButtonBox-Config &nbsp;&bull;&nbsp; http://192.168.4.1</footer>
 
 <script>
-  const FIELDS = ['useEncoders','debounceDelayMs','encoderDebounceUs',
+  const FIELDS = ['bleDeviceName','useEncoders','debounceDelayMs','encoderDebounceUs',
                   'buttonTaskDelayMs','encoderPressDurationMs','encoderTaskDelayMs',
                   'encoderZoneSteps','encoderZoneCount'];
 
@@ -275,7 +284,7 @@ static const char _CFG_HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
     for (const k of FIELDS) {
       const el = document.getElementById(k);
       if (!el) continue;
-      cfg[k] = el.type === 'checkbox' ? el.checked : Number(el.value);
+      cfg[k] = el.type === 'checkbox' ? el.checked : el.type === 'text' ? el.value : Number(el.value);
     }
     cfg.encoderZonesMode        = document.getElementById('encoderZonesMode').value === 'true';
     cfg.encoderZoneMaster       = Number(document.getElementById('encoderZoneMaster').value);

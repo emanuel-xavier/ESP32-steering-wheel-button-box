@@ -4,6 +4,7 @@
 #include <ArduinoJson.h>
 
 struct Config {
+  String   bleDeviceName          = "ESP32-steering-wheel";
   bool     useEncoders            = true;
   uint32_t debounceDelayMs        = 5;     // Bounce2 button debounce (ms)
   uint32_t encoderDebounceUs      = 1000;  // Encoder debounce (µs)
@@ -25,6 +26,7 @@ inline Config loadConfig() {
   Config cfg;
   Preferences prefs;
   if (!prefs.begin("buttonbox", true)) return cfg;  // returns defaults if no NVS entry
+  cfg.bleDeviceName          = prefs.getString("bleName",      cfg.bleDeviceName);
   cfg.useEncoders            = prefs.getBool("useEncoders",    cfg.useEncoders);
   cfg.debounceDelayMs        = prefs.getUInt("debounceMs",     cfg.debounceDelayMs);
   cfg.encoderDebounceUs      = prefs.getUInt("encDebounceUs",  cfg.encoderDebounceUs);
@@ -43,6 +45,7 @@ inline Config loadConfig() {
 inline void saveConfig(const Config& cfg) {
   Preferences prefs;
   prefs.begin("buttonbox", false);
+  prefs.putString("bleName",      cfg.bleDeviceName);
   prefs.putBool("useEncoders",    cfg.useEncoders);
   prefs.putUInt("debounceMs",     cfg.debounceDelayMs);
   prefs.putUInt("encDebounceUs",  cfg.encoderDebounceUs);
@@ -59,6 +62,7 @@ inline void saveConfig(const Config& cfg) {
 
 inline String configToJson(const Config& cfg) {
   StaticJsonDocument<768> doc;
+  doc["bleDeviceName"]          = cfg.bleDeviceName;
   doc["useEncoders"]            = cfg.useEncoders;
   doc["debounceDelayMs"]        = cfg.debounceDelayMs;
   doc["encoderDebounceUs"]      = cfg.encoderDebounceUs;
@@ -80,6 +84,7 @@ inline String configToJson(const Config& cfg) {
 inline bool jsonToConfig(const String& json, Config& cfg) {
   StaticJsonDocument<768> doc;
   if (deserializeJson(doc, json)) return false;
+  if (doc.containsKey("bleDeviceName"))          cfg.bleDeviceName          = doc["bleDeviceName"].as<String>();
   if (doc.containsKey("useEncoders"))            cfg.useEncoders            = doc["useEncoders"].as<bool>();
   if (doc.containsKey("debounceDelayMs"))        cfg.debounceDelayMs        = doc["debounceDelayMs"].as<uint32_t>();
   if (doc.containsKey("encoderDebounceUs"))      cfg.encoderDebounceUs      = doc["encoderDebounceUs"].as<uint32_t>();

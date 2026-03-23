@@ -28,7 +28,7 @@
 static Config cfg;
 
 Bounce       debouncers[NUM_OF_BUTTONS];
-BleGamepad   bleGamepad("ESP32-steering-wheel", "emanuelxavier.dev");
+BleGamepad*  pBleGamepad = nullptr;
 
 byte         buttonPins[NUM_OF_BUTTONS]        = {2, 13, 15, 14, 16, 17, 18, 19, 21, 22, 23, 25, 32, 33};
 byte         encoderPins[NUM_OF_ENCODERS][2]   = {{26, 27}, {4, 5}};
@@ -42,27 +42,27 @@ volatile uint32_t buttonState    = 0;  // bitmask: bit i set = buttonPins[i] cur
 // ── Tasks ───────────────────────────────────────────────────────────────────
 void buttonTask(void*) {
   while (true) {
-    if (bleGamepad.isConnected()) {
+    if (pBleGamepad->isConnected()) {
       bool dirty = false;
       for (byte i = 0; i < NUM_OF_BUTTONS; i++) {
         debouncers[i].update();
         if (debouncers[i].fell()) {
           buttonState |= (1u << i);
-          bleGamepad.press(physicalButtons[i]);
+          pBleGamepad->press(physicalButtons[i]);
           dirty = true;
           #ifdef SERIAL_DEBUG
             Serial.printf("Button %d pressed  (pin %d)\n", physicalButtons[i], buttonPins[i]);
           #endif
         } else if (debouncers[i].rose()) {
           buttonState &= ~(1u << i);
-          bleGamepad.release(physicalButtons[i]);
+          pBleGamepad->release(physicalButtons[i]);
           dirty = true;
           #ifdef SERIAL_DEBUG
             Serial.printf("Button %d released (pin %d)\n", physicalButtons[i], buttonPins[i]);
           #endif
         }
       }
-      if (dirty) bleGamepad.sendReport();
+      if (dirty) pBleGamepad->sendReport();
     }
     #ifdef SERIAL_DEBUG
     else { Serial.println("BLE not connected"); }
@@ -73,7 +73,7 @@ void buttonTask(void*) {
 
 void encoderTask(void*) {
   while (true) {
-    if (bleGamepad.isConnected()) {
+    if (pBleGamepad->isConnected()) {
       for (int i = 0; i < NUM_OF_ENCODERS; i++) {
         Enc::Move m = encoders[i].read();
         if (m == Enc::none) continue;
@@ -83,11 +83,11 @@ void encoderTask(void*) {
           Serial.printf("Encoder %d %s -> button %d (clk pin %d)\n",
             i, (m == Enc::ccw) ? "CCW" : "CW", physicalButtons[idx], encoderPins[i][0]);
         #endif
-        bleGamepad.press(physicalButtons[idx]);
-        bleGamepad.sendReport();
+        pBleGamepad->press(physicalButtons[idx]);
+        pBleGamepad->sendReport();
         vTaskDelay(cfg.encoderPressDurationMs / portTICK_PERIOD_MS);
-        bleGamepad.release(physicalButtons[idx]);
-        bleGamepad.sendReport();
+        pBleGamepad->release(physicalButtons[idx]);
+        pBleGamepad->sendReport();
       }
     }
     vTaskDelay(cfg.encoderTaskDelayMs / portTICK_PERIOD_MS);
@@ -101,7 +101,7 @@ void encoderZonesTask(void*) {
   int  position    = 0;
   bool resetActive = false;  // prevents repeated resets while combo is held
   while (true) {
-    if (bleGamepad.isConnected()) {
+    if (pBleGamepad->isConnected()) {
       // Reset combo check
       uint32_t mask = cfg.encoderZoneResetMask;
       if (mask != 0 && (buttonState & mask) == mask) {
@@ -137,11 +137,11 @@ void encoderZonesTask(void*) {
           Serial.printf("Zone %d | Enc%d %s -> btn %d (clk pin %d)\n",
             zone, slave, (m2 == Enc::ccw) ? "CCW" : "CW", physicalButtons[idx], encoderPins[slave][0]);
         #endif
-        bleGamepad.press(physicalButtons[idx]);
-        bleGamepad.sendReport();
+        pBleGamepad->press(physicalButtons[idx]);
+        pBleGamepad->sendReport();
         vTaskDelay(cfg.encoderPressDurationMs / portTICK_PERIOD_MS);
-        bleGamepad.release(physicalButtons[idx]);
-        bleGamepad.sendReport();
+        pBleGamepad->release(physicalButtons[idx]);
+        pBleGamepad->sendReport();
       }
     }
     vTaskDelay(cfg.encoderTaskDelayMs / portTICK_PERIOD_MS);
@@ -168,10 +168,11 @@ void setupBleGamepad() {
   int encButtons = 0;
   if (cfg.useEncoders)
     encButtons = cfg.encoderZonesMode ? (int)cfg.encoderZoneCount * 2 : NUM_OF_ENCODERS * 2;
+  pBleGamepad = new BleGamepad(cfg.bleDeviceName.c_str(), "emanuelxavier.dev");
   BleGamepadConfiguration gcfg;
   gcfg.setButtonCount(NUM_OF_BUTTONS + encButtons);
   gcfg.setAutoReport(false);
-  bleGamepad.begin(&gcfg);
+  pBleGamepad->begin(&gcfg);
 }
 
 // ── Entry point ──────────────────────────────────────────────────────────────
