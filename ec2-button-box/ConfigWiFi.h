@@ -132,6 +132,13 @@ static const char _CFG_HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
         <label><span>Zone Count</span><small>Only divisors of Zone Steps are valid</small></label>
         <select id="encoderZoneCount" style="width:90px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:.4rem .55rem;font-size:.95rem;outline:none"></select>
       </div>
+      <div class="field" style="flex-direction:column;align-items:flex-start;gap:.5rem">
+        <label>
+          <span>Reset Combo</span>
+          <small>Hold all selected buttons simultaneously to reset zone position to 0. Leave empty to disable.</small>
+        </label>
+        <div id="resetBtnPicker" style="display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.2rem"></div>
+      </div>
     </div>
 
     <div class="field">
@@ -171,6 +178,50 @@ static const char _CFG_HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
   function onEncoderToggle() {
     const on = document.getElementById('useEncoders').checked;
     document.getElementById('encoderOptions').classList.toggle('hidden', !on);
+  }
+
+  function buildResetPicker() {
+    const picker = document.getElementById('resetBtnPicker');
+    picker.innerHTML = '';
+    for (let i = 1; i <= 14; i++) {
+      const chip = document.createElement('div');
+      chip.id = 'resetBtn' + i;
+      chip.textContent = i;
+      chip.dataset.active = 'false';
+      chip.style.cssText = 'width:34px;height:34px;display:flex;align-items:center;justify-content:center;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--muted);cursor:pointer;font-size:.85rem;font-weight:600;transition:all .15s;user-select:none';
+      chip.onclick = () => toggleResetBtn(i);
+      picker.appendChild(chip);
+    }
+  }
+
+  function toggleResetBtn(n) {
+    const chip = document.getElementById('resetBtn' + n);
+    const active = chip.dataset.active !== 'true';
+    chip.dataset.active = active;
+    chip.style.borderColor = active ? 'var(--accent)' : 'var(--border)';
+    chip.style.color       = active ? 'var(--accent)' : 'var(--muted)';
+    chip.style.background  = active ? '#1e2d4a'       : 'var(--bg)';
+  }
+
+  function getResetButtons() {
+    const result = [];
+    for (let i = 1; i <= 14; i++) {
+      const chip = document.getElementById('resetBtn' + i);
+      if (chip && chip.dataset.active === 'true') result.push(i);
+    }
+    return result;
+  }
+
+  function setResetButtons(arr) {
+    for (let i = 1; i <= 14; i++) {
+      const chip = document.getElementById('resetBtn' + i);
+      if (!chip) continue;
+      const active = arr.includes(i);
+      chip.dataset.active = active;
+      chip.style.borderColor = active ? 'var(--accent)' : 'var(--border)';
+      chip.style.color       = active ? 'var(--accent)' : 'var(--muted)';
+      chip.style.background  = active ? '#1e2d4a'       : 'var(--bg)';
+    }
   }
 
   function updateZoneCountOptions() {
@@ -213,8 +264,9 @@ static const char _CFG_HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
     updateZoneCountOptions();
     if (cfg.encoderZoneCount !== undefined)
       document.getElementById('encoderZoneCount').value = cfg.encoderZoneCount;
-    if (cfg.encoderZonesMode  !== undefined) setMode(cfg.encoderZonesMode);
-    if (cfg.encoderZoneMaster !== undefined) setMaster(cfg.encoderZoneMaster);
+    if (cfg.encoderZonesMode        !== undefined) setMode(cfg.encoderZonesMode);
+    if (cfg.encoderZoneMaster       !== undefined) setMaster(cfg.encoderZoneMaster);
+    if (cfg.encoderZoneResetButtons !== undefined) setResetButtons(cfg.encoderZoneResetButtons);
     onEncoderToggle();
   }
 
@@ -225,8 +277,9 @@ static const char _CFG_HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
       if (!el) continue;
       cfg[k] = el.type === 'checkbox' ? el.checked : Number(el.value);
     }
-    cfg.encoderZonesMode  = document.getElementById('encoderZonesMode').value === 'true';
-    cfg.encoderZoneMaster = Number(document.getElementById('encoderZoneMaster').value);
+    cfg.encoderZonesMode        = document.getElementById('encoderZonesMode').value === 'true';
+    cfg.encoderZoneMaster       = Number(document.getElementById('encoderZoneMaster').value);
+    cfg.encoderZoneResetButtons = getResetButtons();
     return cfg;
   }
 
@@ -260,6 +313,7 @@ static const char _CFG_HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
     }
   }
 
+  buildResetPicker();
   setMode(false);
   updateZoneCountOptions();
   loadConfig();

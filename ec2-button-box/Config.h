@@ -16,6 +16,9 @@ struct Config {
   uint32_t encoderZoneMaster      = 0;     // index of the selector encoder (0 or 1)
   uint32_t encoderZoneSteps       = 20;    // total steps of the selector encoder
   uint32_t encoderZoneCount       = 2;     // number of zones to divide those steps into
+  // Bitmask of physical buttons (bit N = button N+1) that must all be held simultaneously
+  // to reset the master encoder position to 0. 0 = feature disabled.
+  uint32_t encoderZoneResetMask   = 0;
 };
 
 inline Config loadConfig() {
@@ -32,6 +35,7 @@ inline Config loadConfig() {
   cfg.encoderZoneMaster      = prefs.getUInt("encZoneMaster",  cfg.encoderZoneMaster);
   cfg.encoderZoneSteps       = prefs.getUInt("encZoneSteps",   cfg.encoderZoneSteps);
   cfg.encoderZoneCount       = prefs.getUInt("encZoneCount",   cfg.encoderZoneCount);
+  cfg.encoderZoneResetMask   = prefs.getUInt("encResetMask",   cfg.encoderZoneResetMask);
   prefs.end();
   return cfg;
 }
@@ -49,11 +53,12 @@ inline void saveConfig(const Config& cfg) {
   prefs.putUInt("encZoneMaster",  cfg.encoderZoneMaster);
   prefs.putUInt("encZoneSteps",   cfg.encoderZoneSteps);
   prefs.putUInt("encZoneCount",   cfg.encoderZoneCount);
+  prefs.putUInt("encResetMask",   cfg.encoderZoneResetMask);
   prefs.end();
 }
 
 inline String configToJson(const Config& cfg) {
-  StaticJsonDocument<512> doc;
+  StaticJsonDocument<768> doc;
   doc["useEncoders"]            = cfg.useEncoders;
   doc["debounceDelayMs"]        = cfg.debounceDelayMs;
   doc["encoderDebounceUs"]      = cfg.encoderDebounceUs;
@@ -64,13 +69,16 @@ inline String configToJson(const Config& cfg) {
   doc["encoderZoneMaster"]      = cfg.encoderZoneMaster;
   doc["encoderZoneSteps"]       = cfg.encoderZoneSteps;
   doc["encoderZoneCount"]       = cfg.encoderZoneCount;
+  JsonArray resetArr = doc.createNestedArray("encoderZoneResetButtons");
+  for (int i = 0; i < 14; i++)
+    if (cfg.encoderZoneResetMask & (1u << i)) resetArr.add(i + 1);
   String out;
   serializeJson(doc, out);
   return out;
 }
 
 inline bool jsonToConfig(const String& json, Config& cfg) {
-  StaticJsonDocument<512> doc;
+  StaticJsonDocument<768> doc;
   if (deserializeJson(doc, json)) return false;
   if (doc.containsKey("useEncoders"))            cfg.useEncoders            = doc["useEncoders"].as<bool>();
   if (doc.containsKey("debounceDelayMs"))        cfg.debounceDelayMs        = doc["debounceDelayMs"].as<uint32_t>();
@@ -82,5 +90,10 @@ inline bool jsonToConfig(const String& json, Config& cfg) {
   if (doc.containsKey("encoderZoneMaster"))      cfg.encoderZoneMaster      = doc["encoderZoneMaster"].as<uint32_t>();
   if (doc.containsKey("encoderZoneSteps"))       cfg.encoderZoneSteps       = doc["encoderZoneSteps"].as<uint32_t>();
   if (doc.containsKey("encoderZoneCount"))       cfg.encoderZoneCount       = doc["encoderZoneCount"].as<uint32_t>();
+  if (doc.containsKey("encoderZoneResetButtons")) {
+    cfg.encoderZoneResetMask = 0;
+    for (int btn : doc["encoderZoneResetButtons"].as<JsonArray>())
+      if (btn >= 1 && btn <= 14) cfg.encoderZoneResetMask |= (1u << (btn - 1));
+  }
   return true;
 }

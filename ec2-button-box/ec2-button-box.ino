@@ -22,7 +22,7 @@
 
 #define NUM_OF_BUTTONS   14
 #define NUM_OF_ENCODERS   2
-#define CONFIG_BOOT_PIN   25   // Hold LOW at boot to enter WiFi config mode
+#define CONFIG_BOOT_PIN  17   // Hold LOW at boot to enter WiFi config mode
 
 // ── Globals ─────────────────────────────────────────────────────────────────
 static Config cfg;
@@ -35,8 +35,9 @@ byte         encoderPins[NUM_OF_ENCODERS][2]   = {{26, 27}, {4, 5}};
 #define MAX_ENC_BUTTONS  16  // supports up to 8 zones
 byte         physicalButtons[NUM_OF_BUTTONS + MAX_ENC_BUTTONS];
 
-Enc::Encoder encoders[NUM_OF_ENCODERS];
-const byte   encoderBtnStart = NUM_OF_BUTTONS;
+Enc::Encoder     encoders[NUM_OF_ENCODERS];
+const byte       encoderBtnStart = NUM_OF_BUTTONS;
+volatile uint32_t buttonState    = 0;  // bitmask: bit i set = buttonPins[i] currently pressed
 
 // ── Tasks ───────────────────────────────────────────────────────────────────
 void buttonTask(void*) {
@@ -46,12 +47,14 @@ void buttonTask(void*) {
       for (byte i = 0; i < NUM_OF_BUTTONS; i++) {
         debouncers[i].update();
         if (debouncers[i].fell()) {
+          buttonState |= (1u << i);
           bleGamepad.press(physicalButtons[i]);
           dirty = true;
           #ifdef SERIAL_DEBUG
             Serial.printf("Button %d pressed  (pin %d)\n", physicalButtons[i], buttonPins[i]);
           #endif
         } else if (debouncers[i].rose()) {
+          buttonState &= ~(1u << i);
           bleGamepad.release(physicalButtons[i]);
           dirty = true;
           #ifdef SERIAL_DEBUG
@@ -95,9 +98,24 @@ void encoderTask(void*) {
 // Encoder 2 triggers zone-specific buttons instead of fixed CW/CCW buttons.
 // Button layout: physicalButtons[encoderBtnStart + zone*2 + (ccw?1:0)]
 void encoderZonesTask(void*) {
-  int position = 0;
+  int  position    = 0;
+  bool resetActive = false;  // prevents repeated resets while combo is held
   while (true) {
     if (bleGamepad.isConnected()) {
+      // Reset combo check
+      uint32_t mask = cfg.encoderZoneResetMask;
+      if (mask != 0 && (buttonState & mask) == mask) {
+        if (!resetActive) {
+          resetActive = true;
+          position    = 0;
+          #ifdef SERIAL_DEBUG
+            Serial.println("Zone position reset to 0");
+          #endif
+        }
+      } else {
+        resetActive = false;
+      }
+
       int master = (int)cfg.encoderZoneMaster;
       int slave  = 1 - master;
 
