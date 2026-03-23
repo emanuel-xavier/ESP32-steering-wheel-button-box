@@ -106,6 +106,11 @@ void encoderZonesTask(void*) {
       if (m1 == Enc::ccw) position = (position - 1 + (int)cfg.encoderZoneSteps) % (int)cfg.encoderZoneSteps;
 
       int zone = (position * (int)cfg.encoderZoneCount) / (int)cfg.encoderZoneSteps;
+      #ifdef SERIAL_DEBUG
+        if (m1 != Enc::none)
+          Serial.printf("Master enc%d %s -> pos %d / zone %d\n",
+            master, (m1 == Enc::cw) ? "CW" : "CCW", position, zone);
+      #endif
 
       Enc::Move m2 = encoders[slave].read();
       if (m2 != Enc::none) {
@@ -153,7 +158,9 @@ void setupBleGamepad() {
 
 // ── Entry point ──────────────────────────────────────────────────────────────
 void setup() {
-  Serial.begin(115200);
+  #ifdef SERIAL_DEBUG
+    Serial.begin(115200);
+  #endif
 
   // Config mode: hold first button (pin 2) LOW while powering on
   pinMode(CONFIG_BOOT_PIN, INPUT_PULLUP);

@@ -265,7 +265,9 @@ static void _handlePostConfig() {
   if (jsonToConfig(_cfgServer.arg("plain"), cfg)) {
     saveConfig(cfg);
     _cfgServer.send(200, "application/json", "{\"ok\":true}");
-    Serial.println("[Config] Saved to NVS. Rebooting in 1s...");
+    #ifdef SERIAL_DEBUG
+      Serial.println("[Config] Saved to NVS. Rebooting in 1s...");
+    #endif
     delay(1000);
     esp_restart();
   } else {
@@ -275,17 +277,24 @@ static void _handlePostConfig() {
 
 // Starts WiFi AP + HTTP server. Never returns; the device reboots after save.
 inline void startConfigMode() {
-  Serial.println("[Config] Starting WiFi AP 'ButtonBox-Config'...");
+  #ifdef SERIAL_DEBUG
+    Serial.begin(115200);
+    Serial.println("[Config] Starting WiFi AP 'ButtonBox-Config'...");
+  #endif
   WiFi.softAP("ButtonBox-Config");
-  Serial.print("[Config] IP: ");
-  Serial.println(WiFi.softAPIP()); // 192.168.4.1
+  #ifdef SERIAL_DEBUG
+    Serial.print("[Config] IP: ");
+    Serial.println(WiFi.softAPIP());
+  #endif
 
   _cfgServer.on("/",       HTTP_GET,  _handleRoot);
   _cfgServer.on("/config", HTTP_GET,  _handleGetConfig);
   _cfgServer.on("/config", HTTP_POST, _handlePostConfig);
   _cfgServer.begin();
 
-  Serial.println("[Config] Open http://192.168.4.1 in any browser.");
+  #ifdef SERIAL_DEBUG
+    Serial.println("[Config] Open http://192.168.4.1 in any browser.");
+  #endif
 
   while (true) {
     _cfgServer.handleClient();
