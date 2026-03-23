@@ -49,13 +49,13 @@ void buttonTask(void*) {
           bleGamepad.press(physicalButtons[i]);
           dirty = true;
           #ifdef SERIAL_DEBUG
-            Serial.printf("Button %d pressed\n", physicalButtons[i]);
+            Serial.printf("Button %d pressed  (pin %d)\n", physicalButtons[i], buttonPins[i]);
           #endif
         } else if (debouncers[i].rose()) {
           bleGamepad.release(physicalButtons[i]);
           dirty = true;
           #ifdef SERIAL_DEBUG
-            Serial.printf("Button %d released\n", physicalButtons[i]);
+            Serial.printf("Button %d released (pin %d)\n", physicalButtons[i], buttonPins[i]);
           #endif
         }
       }
@@ -77,8 +77,8 @@ void encoderTask(void*) {
 
         byte idx = encoderBtnStart + i * 2 + (m == Enc::ccw ? 1 : 0);
         #ifdef SERIAL_DEBUG
-          Serial.printf("Encoder %d %s -> button %d\n",
-            i, (m == Enc::ccw) ? "CCW" : "CW", physicalButtons[idx]);
+          Serial.printf("Encoder %d %s -> button %d (clk pin %d)\n",
+            i, (m == Enc::ccw) ? "CCW" : "CW", physicalButtons[idx], encoderPins[i][0]);
         #endif
         bleGamepad.press(physicalButtons[idx]);
         bleGamepad.sendReport();
@@ -108,16 +108,16 @@ void encoderZonesTask(void*) {
       int zone = (position * (int)cfg.encoderZoneCount) / (int)cfg.encoderZoneSteps;
       #ifdef SERIAL_DEBUG
         if (m1 != Enc::none)
-          Serial.printf("Master enc%d %s -> pos %d / zone %d\n",
-            master, (m1 == Enc::cw) ? "CW" : "CCW", position, zone);
+          Serial.printf("Master enc%d %s -> pos %d / zone %d (clk pin %d)\n",
+            master, (m1 == Enc::cw) ? "CW" : "CCW", position, zone, encoderPins[master][0]);
       #endif
 
       Enc::Move m2 = encoders[slave].read();
       if (m2 != Enc::none) {
         byte idx = encoderBtnStart + zone * 2 + (m2 == Enc::ccw ? 1 : 0);
         #ifdef SERIAL_DEBUG
-          Serial.printf("Zone %d | Enc%d %s -> btn %d\n",
-            zone, slave, (m2 == Enc::ccw) ? "CCW" : "CW", physicalButtons[idx]);
+          Serial.printf("Zone %d | Enc%d %s -> btn %d (clk pin %d)\n",
+            zone, slave, (m2 == Enc::ccw) ? "CCW" : "CW", physicalButtons[idx], encoderPins[slave][0]);
         #endif
         bleGamepad.press(physicalButtons[idx]);
         bleGamepad.sendReport();
