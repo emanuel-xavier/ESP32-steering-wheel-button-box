@@ -9,14 +9,17 @@
 //   config_read  (READ)  : bb010001-feed-dead-beef-cafebabe0001  → current config JSON
 //   config_write (WRITE) : bb010002-feed-dead-beef-cafebabe0001  → new config JSON, saved to NVS
 //   reboot       (WRITE) : bb010003-feed-dead-beef-cafebabe0001  → any write triggers esp_restart()
+//   ota_trigger  (WRITE) : bb010004-feed-dead-beef-cafebabe0001  → any write enters OTA WiFi mode
 
 #include <NimBLEDevice.h>
 #include "Config.h"
+#include "OTA.h"
 
 #define BB_SERVICE_UUID      "bb010000-feed-dead-beef-cafebabe0001"
 #define BB_CFG_READ_UUID     "bb010001-feed-dead-beef-cafebabe0001"
 #define BB_CFG_WRITE_UUID    "bb010002-feed-dead-beef-cafebabe0001"
 #define BB_CFG_REBOOT_UUID   "bb010003-feed-dead-beef-cafebabe0001"
+#define BB_OTA_TRIGGER_UUID  "bb010004-feed-dead-beef-cafebabe0001"
 
 class _BbWriteCallbacks : public NimBLECharacteristicCallbacks {
   void onWrite(NimBLECharacteristic* pChar, NimBLEConnInfo&) override {
@@ -43,6 +46,16 @@ class _BbRebootCallbacks : public NimBLECharacteristicCallbacks {
     #endif
     delay(500);
     esp_restart();
+  }
+};
+
+class _BbOtaCallbacks : public NimBLECharacteristicCallbacks {
+  void onWrite(NimBLECharacteristic*, NimBLEConnInfo&) override {
+    #ifdef SERIAL_DEBUG
+      Serial.println("[BLE Config] OTA mode requested — switching to WiFi AP.");
+    #endif
+    Config cfg = loadConfig();
+    startOTAMode(cfg.otaPassword);  // never returns
   }
 };
 
@@ -74,6 +87,11 @@ inline void startConfigMode() {
   NimBLECharacteristic* pReboot = pService->createCharacteristic(
     BB_CFG_REBOOT_UUID, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
   pReboot->setCallbacks(new _BbRebootCallbacks());
+
+  // OTA trigger: any write stops BLE and starts WiFi ArduinoOTA soft-AP
+  NimBLECharacteristic* pOta = pService->createCharacteristic(
+    BB_OTA_TRIGGER_UUID, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
+  pOta->setCallbacks(new _BbOtaCallbacks());
 
   pService->start();
 

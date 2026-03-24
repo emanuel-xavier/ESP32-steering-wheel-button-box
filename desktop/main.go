@@ -30,6 +30,7 @@ var (
 	readUUID    = mustUUID("bb010001-feed-dead-beef-cafebabe0001")
 	writeUUID   = mustUUID("bb010002-feed-dead-beef-cafebabe0001")
 	rebootUUID  = mustUUID("bb010003-feed-dead-beef-cafebabe0001")
+	otaUUID     = mustUUID("bb010004-feed-dead-beef-cafebabe0001")
 	adapter     = bluetooth.DefaultAdapter
 )
 
@@ -40,6 +41,7 @@ type bleConn struct {
 	readChar   bluetooth.DeviceCharacteristic
 	writeChar  bluetooth.DeviceCharacteristic
 	rebootChar bluetooth.DeviceCharacteristic
+	otaChar    bluetooth.DeviceCharacteristic
 }
 
 var (
@@ -64,6 +66,7 @@ func main() {
 	})
 	mux.HandleFunc("/discover", handleDiscover)
 	mux.HandleFunc("/config", handleConfig)
+	mux.HandleFunc("/ota", handleOTA)
 
 	go http.ListenAndServe("127.0.0.1:18080", mux)
 
@@ -124,6 +127,20 @@ func handleConfig(w http.ResponseWriter, r *http.Request) {
 		setConn(nil)
 		json.NewEncoder(w).Encode(map[string]any{"ok": true})
 	}
+}
+
+func handleOTA(w http.ResponseWriter, r *http.Request) {
+	c := getConn()
+	if c == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Write([]byte(`{"error":"not connected"}`))
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	// Trigger OTA mode — device will stop BLE and start WiFi soft-AP
+	c.otaChar.WriteWithoutResponse([]byte{1})
+	setConn(nil)
+	json.NewEncoder(w).Encode(map[string]any{"ok": true})
 }
 
 // ── BLE discovery & connection ────────────────────────────────────────────────
@@ -188,6 +205,8 @@ func scanAndConnect() (*bleConn, error) {
 			c.writeChar = ch
 		case rebootUUID:
 			c.rebootChar = ch
+		case otaUUID:
+			c.otaChar = ch
 		}
 	}
 

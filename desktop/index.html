@@ -52,6 +52,8 @@
     .btn-ghost{background:transparent;border:1px solid var(--border);color:var(--text)}
     .btn-ghost:not(:disabled):hover{border-color:var(--accent);color:var(--accent)}
     .btn-sm{padding:.4rem .85rem;font-size:.82rem}
+    .btn-warn{background:#7a3a0a;color:#f5c07a}
+    .btn-warn:not(:disabled):hover{background:#8f4410}
     .actions{display:flex;gap:.75rem;margin-top:1.25rem;flex-wrap:wrap}
     #status{margin-top:.9rem;padding:.6rem .9rem;border-radius:var(--r);
             font-size:.88rem;display:none}
@@ -120,10 +122,22 @@
   <div class="field" style="flex-direction:column;align-items:flex-start;gap:.5rem">
     <label>
       <span>Config Mode Button</span>
-      <small>Hold this button while powering on to enter Wi-Fi config mode.</small>
+      <small>Hold this button while powering on to enter Bluetooth config mode.</small>
     </label>
     <div id="cfgBootPicker" style="display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.2rem"></div>
   </div>
+</div>
+
+<div class="card">
+  <h2>OTA Firmware Update</h2>
+  <div class="field">
+    <label><span>OTA Password</span><small>ArduinoOTA password (leave empty for none)</small></label>
+    <input type="text" id="otaPassword" maxlength="64" value="" style="width:190px"/>
+  </div>
+  <div class="actions">
+    <button class="btn btn-warn" id="btnOta" onclick="startOTA()">&#8593; Enter OTA Mode</button>
+  </div>
+  <div id="otaStatus" style="margin-top:.9rem;padding:.6rem .9rem;border-radius:var(--r);font-size:.88rem;display:none"></div>
 </div>
 
 <div class="card">
@@ -207,7 +221,7 @@
 <footer>ButtonBox Desktop &nbsp;&bull;&nbsp; Config via Bluetooth</footer>
 
 <script>
-  const FIELDS = ['bleDeviceName','useEncoders','debounceDelayMs','encoderDebounceUs',
+  const FIELDS = ['bleDeviceName','otaPassword','useEncoders','debounceDelayMs','encoderDebounceUs',
                   'buttonTaskDelayMs','encoderPressDurationMs','encoderTaskDelayMs',
                   'encoderZoneSteps','encoderZoneCount'];
 
@@ -223,6 +237,7 @@
         hide('stateSearching'); show('stateFound');
         show('configSection');
         document.getElementById('btnSave').disabled = false;
+        document.getElementById('btnOta').disabled = false;
         loadConfig();
       } else {
         hide('stateSearching'); show('stateNotFound');
@@ -417,6 +432,40 @@
     } catch (e) {
       btn.disabled = false;
       setStatus('Save failed: ' + e.message, 'error');
+    }
+  }
+
+  // ── OTA ────────────────────────────────────────────────────────────────────
+
+  function setOtaStatus(msg, type) {
+    const el = document.getElementById('otaStatus');
+    el.style.display = 'block';
+    el.style.background = type === 'ok' ? '#1a3028' : type === 'error' ? '#3a1a1a' : '#1e2d4a';
+    el.style.color = type === 'ok' ? 'var(--success)' : type === 'error' ? 'var(--danger)' : 'var(--accent)';
+    el.innerHTML = msg;
+  }
+
+  async function startOTA() {
+    const btn = document.getElementById('btnOta');
+    btn.disabled = true;
+    setOtaStatus('Switching to OTA mode&hellip;', 'info');
+    try {
+      const res = await fetch('/ota');
+      if (res.ok) {
+        setOtaStatus(
+          'OTA mode active!<br><small style="opacity:.8">1. Connect your PC to the <strong>ButtonBox-OTA</strong> WiFi network.<br>2. In Arduino IDE: Tools &rarr; Port &rarr; <strong>buttonbox</strong>.<br>3. Upload your sketch normally.</small>',
+          'ok');
+        hide('configSection');
+        hide('stateFound');
+        // Re-discover after user is done (they'll click Re-scan manually)
+        document.getElementById('stateNotFound').classList.remove('hidden');
+        document.getElementById('stateSearching').classList.add('hidden');
+      } else {
+        throw new Error('HTTP ' + res.status);
+      }
+    } catch (e) {
+      btn.disabled = false;
+      setOtaStatus('Failed: ' + e.message, 'error');
     }
   }
 
