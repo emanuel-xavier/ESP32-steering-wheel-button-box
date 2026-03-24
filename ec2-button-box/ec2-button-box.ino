@@ -224,13 +224,16 @@ void setup() {
 
   cfg = loadConfig();
 
-  // Config mode: hold the configured button while powering on (default: button 6, pin 17)
-  uint32_t bootBtnIdx = constrain(cfg.configBootButton, 1u, (uint32_t)cfg.numButtons) - 1;
-  byte cfgPin = cfg.buttonPins[bootBtnIdx];
-  pinMode(cfgPin, INPUT_PULLUP);
-  delay(100); // let pin settle after power-on
-  if (digitalRead(cfgPin) == LOW) {
-    startConfigMode(); // never returns
+  // Config mode: hold the configured button while powering on (skipped when numButtons=0;
+  // use 3 rapid reboots to enter config mode in that case)
+  if (cfg.numButtons > 0) {
+    uint32_t bootBtnIdx = constrain(cfg.configBootButton, 1u, (uint32_t)cfg.numButtons) - 1;
+    byte cfgPin = cfg.buttonPins[bootBtnIdx];
+    pinMode(cfgPin, INPUT_PULLUP);
+    delay(100); // let pin settle after power-on
+    if (digitalRead(cfgPin) == LOW) {
+      startConfigMode(); // never returns
+    }
   }
 
   // Crash-counter fallback: after 3 rapid reboots without a clean startup,
