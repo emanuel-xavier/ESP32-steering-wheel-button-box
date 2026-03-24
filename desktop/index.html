@@ -111,6 +111,7 @@
   <div id="stateFound" class="discover-row hidden">
     <span class="badge-ok" id="foundBadge">buttonbox.local</span>
     <button class="btn btn-ghost btn-sm" onclick="startDiscover()">Re-scan</button>
+    <button class="btn btn-ghost btn-sm" id="btnDebug" onclick="toggleDebug()">Debug</button>
   </div>
 
   <div id="stateNotFound" class="hidden">
@@ -289,6 +290,21 @@
   </div>
 </details>
 
+<div class="card hidden" id="debugCard">
+  <h2>Debug Monitor</h2>
+  <div style="margin-bottom:1rem">
+    <span style="font-size:.85rem;color:var(--muted)">Currently pressed</span>
+    <div id="debugPressed" style="display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.5rem;min-height:34px"></div>
+  </div>
+  <div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.4rem">
+      <span style="font-size:.85rem;color:var(--muted)">Event log</span>
+      <button class="btn btn-ghost btn-sm" onclick="clearLog()">Clear</button>
+    </div>
+    <div id="debugLog" style="max-height:260px;overflow-y:auto;font-family:monospace;font-size:.8rem;display:flex;flex-direction:column;gap:.15rem"></div>
+  </div>
+</div>
+
 </div> <!-- #configSection -->
 
 <footer>ButtonBox Desktop &nbsp;&bull;&nbsp; Config via Bluetooth</footer>
@@ -326,6 +342,7 @@
   function handleDisconnect() {
     stopPoll();
     stopReconnect();
+    stopDebugStream();
     hide('configSection');
     hide('stateFound');
     hide('stateSearching');
@@ -692,6 +709,74 @@
   setMode(false);
   updateZoneCountOptions();
   startDiscover(); // auto-discover on load
+
+  // ── Debug monitor ───────────────────────────────────────────────────────────
+
+  let _debugEvtSource = null;
+  const _pressedBtns  = new Set();
+  const MAX_LOG       = 50;
+
+  function toggleDebug() {
+    const card = document.getElementById('debugCard');
+    const btn  = document.getElementById('btnDebug');
+    const on   = card.classList.toggle('hidden');
+    btn.style.color = on ? '' : 'var(--accent)';
+    if (!on) startDebugStream(); else stopDebugStream();
+  }
+
+  function startDebugStream() {
+    if (_debugEvtSource) return;
+    _debugEvtSource = new EventSource('/debug/events');
+    _debugEvtSource.onmessage = (e) => {
+      const { btn, evt } = JSON.parse(e.data);
+      const press = evt === 'press';
+      if (press) _pressedBtns.add(btn); else _pressedBtns.delete(btn);
+      renderPressed();
+      appendLog(btn, press);
+    };
+    _debugEvtSource.onerror = () => {
+      // reconnects automatically; nothing to do
+    };
+  }
+
+  function stopDebugStream() {
+    if (_debugEvtSource) { _debugEvtSource.close(); _debugEvtSource = null; }
+    _pressedBtns.clear();
+    renderPressed();
+  }
+
+  function renderPressed() {
+    const el = document.getElementById('debugPressed');
+    el.innerHTML = '';
+    if (_pressedBtns.size === 0) {
+      el.innerHTML = '<span style="color:var(--muted);font-size:.82rem">— none —</span>';
+      return;
+    }
+    [..._pressedBtns].sort((a, b) => a - b).forEach(n => {
+      const chip = document.createElement('span');
+      chip.textContent = n;
+      chip.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:6px;background:var(--accent);color:#fff;font-size:.85rem;font-weight:700';
+      el.appendChild(chip);
+    });
+  }
+
+  function appendLog(btn, press) {
+    const log  = document.getElementById('debugLog');
+    const time = new Date().toLocaleTimeString('en', {hour12: false, hour:'2-digit', minute:'2-digit', second:'2-digit'});
+    const row  = document.createElement('div');
+    row.style.cssText = `padding:.15rem .3rem;border-radius:3px;background:${press ? '#1a2d1a' : '#1a1a2d'}`;
+    row.innerHTML = `<span style="color:var(--muted)">${time}</span>&nbsp; btn <strong style="color:${press ? 'var(--success)' : 'var(--accent)'}">${btn}</strong>&nbsp;<span style="color:var(--muted)">${press ? 'pressed' : 'released'}</span>`;
+    log.appendChild(row);
+    // trim to MAX_LOG entries
+    while (log.children.length > MAX_LOG) log.removeChild(log.firstChild);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  function clearLog() {
+    document.getElementById('debugLog').innerHTML = '';
+    _pressedBtns.clear();
+    renderPressed();
+  }
 </script>
 </body>
 </html>

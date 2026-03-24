@@ -90,7 +90,10 @@ inline void saveConfig(const Config& cfg) {
 }
 
 inline String configToJson(const Config& cfg) {
-  StaticJsonDocument<1280> doc;
+  // static: allocated once on BSS, not the stack — avoids stack overflow
+  // in the NimBLE host task's onRead callback.
+  static StaticJsonDocument<1280> doc;
+  doc.clear();
   doc["bleDeviceName"]          = cfg.bleDeviceName;
   doc["numButtons"]             = cfg.numButtons;
   doc["otaPassword"]            = cfg.otaPassword;
@@ -128,7 +131,8 @@ inline String configToJson(const Config& cfg) {
 }
 
 inline bool jsonToConfig(const String& json, Config& cfg) {
-  StaticJsonDocument<1280> doc;
+  static StaticJsonDocument<1280> doc;
+  doc.clear();
   if (deserializeJson(doc, json)) return false;
   if (doc.containsKey("bleDeviceName"))          cfg.bleDeviceName          = doc["bleDeviceName"].as<String>();
   if (doc.containsKey("numButtons"))             cfg.numButtons             = constrain(doc["numButtons"].as<int>(), 0, 32);

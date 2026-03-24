@@ -44,6 +44,7 @@ void buttonTask(void*) {
         if (debouncers[i].fell()) {
           buttonState |= (1u << i);
           pBleGamepad->press(physicalButtons[i]);
+          notifyButtonEvent(physicalButtons[i], true);
           dirty = true;
           #ifdef SERIAL_DEBUG
             Serial.printf("Button %d pressed  (pin %d)\n", physicalButtons[i], cfg.buttonPins[i]);
@@ -51,6 +52,7 @@ void buttonTask(void*) {
         } else if (debouncers[i].rose()) {
           buttonState &= ~(1u << i);
           pBleGamepad->release(physicalButtons[i]);
+          notifyButtonEvent(physicalButtons[i], false);
           dirty = true;
           #ifdef SERIAL_DEBUG
             Serial.printf("Button %d released (pin %d)\n", physicalButtons[i], cfg.buttonPins[i]);
@@ -72,11 +74,13 @@ void buttonTask(void*) {
               byte bleBtn = physicalButtons[cfg.numButtons + r * cfg.matrixCols + c];
               if (pressed) {
                 pBleGamepad->press(bleBtn);
+                notifyButtonEvent(bleBtn, true);
                 #ifdef SERIAL_DEBUG
                   Serial.printf("Matrix [%d][%d] pressed  -> button %d\n", r, c, bleBtn);
                 #endif
               } else {
                 pBleGamepad->release(bleBtn);
+                notifyButtonEvent(bleBtn, false);
                 #ifdef SERIAL_DEBUG
                   Serial.printf("Matrix [%d][%d] released -> button %d\n", r, c, bleBtn);
                 #endif
@@ -89,7 +93,8 @@ void buttonTask(void*) {
       }
     }
     #ifdef SERIAL_DEBUG
-    else { Serial.println("BLE not connected"); }
+      else { Serial.println("BLE not connected"); }
+      delayMicroseconds(1000);
     #endif
     vTaskDelay(cfg.buttonTaskDelayMs / portTICK_PERIOD_MS);
   }
@@ -108,9 +113,11 @@ void encoderTask(void*) {
             i, (m == Enc::ccw) ? "CCW" : "CW", physicalButtons[idx], cfg.encoderPins[i][0]);
         #endif
         pBleGamepad->press(physicalButtons[idx]);
+        notifyButtonEvent(physicalButtons[idx], true);
         pBleGamepad->sendReport();
         vTaskDelay(cfg.encoderPressDurationMs / portTICK_PERIOD_MS);
         pBleGamepad->release(physicalButtons[idx]);
+        notifyButtonEvent(physicalButtons[idx], false);
         pBleGamepad->sendReport();
       }
     }
@@ -162,9 +169,11 @@ void encoderZonesTask(void*) {
             zone, slave, (m2 == Enc::ccw) ? "CCW" : "CW", physicalButtons[idx], cfg.encoderPins[slave][0]);
         #endif
         pBleGamepad->press(physicalButtons[idx]);
+        notifyButtonEvent(physicalButtons[idx], true);
         pBleGamepad->sendReport();
         vTaskDelay(cfg.encoderPressDurationMs / portTICK_PERIOD_MS);
         pBleGamepad->release(physicalButtons[idx]);
+        notifyButtonEvent(physicalButtons[idx], false);
         pBleGamepad->sendReport();
       }
     }
