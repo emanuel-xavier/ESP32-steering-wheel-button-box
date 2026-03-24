@@ -54,6 +54,13 @@
     .btn-sm{padding:.4rem .85rem;font-size:.82rem}
     .btn-warn{background:#7a3a0a;color:#f5c07a}
     .btn-warn:not(:disabled):hover{background:#8f4410}
+    details{width:100%;max-width:480px;margin-top:1rem}
+    details summary{list-style:none;cursor:pointer;color:var(--muted);font-size:.82rem;
+                    padding:.4rem .2rem;user-select:none;display:flex;align-items:center;gap:.4rem}
+    details summary::-webkit-details-marker{display:none}
+    details summary::before{content:'▶';font-size:.65rem;transition:transform .2s;display:inline-block}
+    details[open] summary::before{transform:rotate(90deg)}
+    details summary:hover{color:var(--text)}
     .actions{display:flex;gap:.75rem;margin-top:1.25rem;flex-wrap:wrap}
     #status{margin-top:.9rem;padding:.6rem .9rem;border-radius:var(--r);
             font-size:.88rem;display:none}
@@ -126,18 +133,6 @@
     </label>
     <div id="cfgBootPicker" style="display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.2rem"></div>
   </div>
-</div>
-
-<div class="card">
-  <h2>OTA Firmware Update</h2>
-  <div class="field">
-    <label><span>OTA Password</span><small>ArduinoOTA password (leave empty for none)</small></label>
-    <input type="text" id="otaPassword" maxlength="64" value="" style="width:190px"/>
-  </div>
-  <div class="actions">
-    <button class="btn btn-warn" id="btnOta" onclick="startOTA()">&#8593; Enter OTA Mode</button>
-  </div>
-  <div id="otaStatus" style="margin-top:.9rem;padding:.6rem .9rem;border-radius:var(--r);font-size:.88rem;display:none"></div>
 </div>
 
 <div class="card">
@@ -215,6 +210,21 @@
   </div>
   <div id="status"></div>
 </div>
+
+<details id="advancedSection">
+  <summary>Advanced</summary>
+  <div class="card" style="margin-top:.5rem">
+    <h2>OTA Firmware Update</h2>
+    <div class="field">
+      <label><span>OTA Password</span><small>ArduinoOTA password (leave empty for none)</small></label>
+      <input type="text" id="otaPassword" maxlength="64" value="" style="width:190px"/>
+    </div>
+    <div class="actions">
+      <button class="btn btn-warn" id="btnOta" onclick="startOTA()">&#8593; Enter OTA Mode</button>
+    </div>
+    <div id="otaStatus" style="margin-top:.9rem;padding:.6rem .9rem;border-radius:var(--r);font-size:.88rem;display:none"></div>
+  </div>
+</details>
 
 </div> <!-- #configSection -->
 
