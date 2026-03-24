@@ -102,7 +102,7 @@ func handleConfig(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		buf := make([]byte, 512)
+		buf := make([]byte, 2048)
 		n, err := c.readChar.Read(buf)
 		if err != nil {
 			w.WriteHeader(http.StatusBadGateway)

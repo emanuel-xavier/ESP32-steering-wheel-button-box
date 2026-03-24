@@ -145,12 +145,18 @@
 <div class="card">
   <h2>Pin Layout</h2>
   <div class="field">
-    <label><span>Number of Buttons</span><small>How many physical buttons are wired (0–32)</small></label>
-    <input type="number" id="numButtons" min="0" max="32" value="14" onchange="onNumButtonsChange()"/>
+    <label><span>Use Direct Buttons</span><small>Enable GPIO pin buttons</small></label>
+    <label class="toggle"><input type="checkbox" id="useDirectButtons" checked onchange="onDirectBtnsToggle()"/><span class="slider"></span></label>
   </div>
-  <div class="field" style="flex-direction:column;align-items:flex-start;gap:.4rem">
-    <label><span>Button Pins</span><small>GPIO number for each button</small></label>
-    <div class="pin-grid" id="btnPinGrid"></div>
+  <div id="directBtnOptions">
+    <div class="field">
+      <label><span>Number of Buttons</span><small>How many physical buttons are wired (1–32)</small></label>
+      <input type="number" id="numButtons" min="1" max="32" value="14" onchange="onNumButtonsChange()"/>
+    </div>
+    <div class="field" style="flex-direction:column;align-items:flex-start;gap:.4rem">
+      <label><span>Button Pins</span><small>GPIO number for each button</small></label>
+      <div class="pin-grid" id="btnPinGrid"></div>
+    </div>
   </div>
 </div>
 
@@ -290,7 +296,7 @@
 <footer>ButtonBox Desktop &nbsp;&bull;&nbsp; Config via Bluetooth</footer>
 
 <script>
-  const FIELDS = ['bleDeviceName','numButtons','otaPassword','useEncoders','debounceDelayMs',
+  const FIELDS = ['bleDeviceName','otaPassword','useEncoders','debounceDelayMs',
                   'encoderDebounceUs','buttonTaskDelayMs','encoderPressDurationMs',
                   'encoderTaskDelayMs','encoderZoneSteps','encoderZoneCount',
                   'useMatrix','matrixRows','matrixCols'];
@@ -452,9 +458,14 @@
       el.type === 'checkbox' ? (el.checked = cfg[k]) : (el.value = cfg[k]);
     }
     // Rebuild pin grid and boot-button picker to match the loaded button count
-    const n = cfg.numButtons != null ? cfg.numButtons : 14;
-    buildBtnPinGrid(n);
-    buildCfgBootPicker(n);
+    const rawN = cfg.numButtons != null ? cfg.numButtons : 14;
+    const useDirectBtns = rawN > 0;
+    document.getElementById('useDirectButtons').checked = useDirectBtns;
+    onDirectBtnsToggle();
+    const n = useDirectBtns ? rawN : 14;  // keep a sensible default in the hidden input
+    if (useDirectBtns) document.getElementById('numButtons').value = n;
+    buildBtnPinGrid(useDirectBtns ? n : 0);
+    buildCfgBootPicker(useDirectBtns ? n : 0);
     updateZoneCountOptions();
     if (cfg.encoderZoneCount       !== undefined) document.getElementById('encoderZoneCount').value = cfg.encoderZoneCount;
     if (cfg.configBootButton       !== undefined) setCfgBootBtn(cfg.configBootButton);
@@ -501,7 +512,10 @@
     cfg.encoderZonesMode        = document.getElementById('encoderZonesMode').value === 'true';
     cfg.encoderZoneMaster       = Number(document.getElementById('encoderZoneMaster').value);
     cfg.encoderZoneResetButtons = getResetButtons();
-    const btnCount = Number(document.getElementById('numButtons').value);  // 0 is valid
+    const btnCount = document.getElementById('useDirectButtons').checked
+      ? Math.max(1, Number(document.getElementById('numButtons').value))
+      : 0;
+    cfg.numButtons = btnCount;
     cfg.buttonPins = Array.from({length: btnCount}, (_, i) =>
       Number(document.getElementById('btnPin' + (i + 1))?.value ?? DEFAULT_BTN_PINS[i] ?? 0));
     cfg.encoderPins = [
@@ -554,6 +568,11 @@
   }
 
   // ── Matrix pin grids ───────────────────────────────────────────────────────
+
+  function onDirectBtnsToggle() {
+    const on = document.getElementById('useDirectButtons').checked;
+    document.getElementById('directBtnOptions').classList.toggle('hidden', !on);
+  }
 
   function onMatrixToggle() {
     const on = document.getElementById('useMatrix').checked;
