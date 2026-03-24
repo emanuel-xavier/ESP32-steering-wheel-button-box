@@ -22,7 +22,6 @@
 
 #define NUM_OF_BUTTONS   14
 #define NUM_OF_ENCODERS   2
-#define CONFIG_BOOT_PIN  17   // Hold LOW at boot to enter WiFi config mode
 
 // ── Globals ─────────────────────────────────────────────────────────────────
 static Config cfg;
@@ -181,14 +180,40 @@ void setup() {
     Serial.begin(115200);
   #endif
 
-  // Config mode: hold first button (pin 2) LOW while powering on
-  pinMode(CONFIG_BOOT_PIN, INPUT_PULLUP);
+  cfg = loadConfig();
+
+  // Config mode: hold the configured button while powering on (default: button 6, pin 17)
+  uint32_t bootBtnIdx = constrain(cfg.configBootButton, 1u, (uint32_t)NUM_OF_BUTTONS) - 1;
+  byte cfgPin = buttonPins[bootBtnIdx];
+  pinMode(cfgPin, INPUT_PULLUP);
   delay(100); // let pin settle after power-on
-  if (digitalRead(CONFIG_BOOT_PIN) == LOW) {
+  if (digitalRead(cfgPin) == LOW) {
     startConfigMode(); // never returns
   }
 
-  cfg = loadConfig();
+  // Crash-counter fallback: after 3 rapid reboots without a clean startup,
+  // enter config mode automatically so the device is still recoverable.
+  {
+    Preferences bp;
+    bp.begin("bootcnt", false);
+    uint32_t cnt = bp.getUInt("cnt", 0) + 1;
+    bp.putUInt("cnt", cnt);
+    bp.end();
+    delay(1000); // wait 1 s — a crash during this window keeps the counter high
+    #ifdef SERIAL_DEBUG
+      Serial.printf("[Boot] Boot counter: %u/3\n", cnt);
+    #endif
+    if (cnt >= 3) {
+      #ifdef SERIAL_DEBUG
+        Serial.println("[Boot] 3 rapid reboots detected — entering config mode");
+      #endif
+      Preferences bpReset;
+      bpReset.begin("bootcnt", false);
+      bpReset.putUInt("cnt", 0);
+      bpReset.end();
+      startConfigMode(); // never returns
+    }
+  }
 
   setupButtons();
   if (cfg.useEncoders) setupEncoders();
@@ -203,6 +228,14 @@ void setup() {
       xTaskCreate(encoderZonesTask, "EncZonesTask", 4096, NULL, 1, NULL);
     else
       xTaskCreate(encoderTask, "EncoderTask", 4096, NULL, 1, NULL);
+  }
+
+  // Startup succeeded — clear crash counter
+  {
+    Preferences bp;
+    bp.begin("bootcnt", false);
+    bp.putUInt("cnt", 0);
+    bp.end();
   }
 }
 

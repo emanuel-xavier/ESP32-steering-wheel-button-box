@@ -94,6 +94,13 @@ static const char _CFG_HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
     <input type="text" id="bleDeviceName" maxlength="32" value="ESP32-steering-wheel"
            style="width:190px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:.4rem .55rem;font-size:.88rem;outline:none"/>
   </div>
+  <div class="field" style="flex-direction:column;align-items:flex-start;gap:.5rem">
+    <label>
+      <span>Config Mode Button</span>
+      <small>Hold this button while powering on to enter Wi-Fi config mode.</small>
+    </label>
+    <div id="cfgBootPicker" style="display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.2rem"></div>
+  </div>
 </div>
 
 <div class="card">
@@ -190,6 +197,40 @@ static const char _CFG_HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
     document.getElementById('encoderOptions').classList.toggle('hidden', !on);
   }
 
+  function buildCfgBootPicker() {
+    const picker = document.getElementById('cfgBootPicker');
+    picker.innerHTML = '';
+    for (let i = 1; i <= 14; i++) {
+      const chip = document.createElement('div');
+      chip.id = 'cfgBootBtn' + i;
+      chip.textContent = i;
+      chip.style.cssText = 'width:34px;height:34px;display:flex;align-items:center;justify-content:center;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--muted);cursor:pointer;font-size:.85rem;font-weight:600;transition:all .15s;user-select:none';
+      chip.onclick = () => setCfgBootBtn(i);
+      picker.appendChild(chip);
+    }
+    setCfgBootBtn(6); // default
+  }
+
+  function setCfgBootBtn(n) {
+    for (let i = 1; i <= 14; i++) {
+      const chip = document.getElementById('cfgBootBtn' + i);
+      if (!chip) continue;
+      const active = i === n;
+      chip.style.borderColor = active ? 'var(--accent)' : 'var(--border)';
+      chip.style.color       = active ? 'var(--accent)' : 'var(--muted)';
+      chip.style.background  = active ? '#1e2d4a'       : 'var(--bg)';
+      chip.dataset.active    = active;
+    }
+  }
+
+  function getCfgBootBtn() {
+    for (let i = 1; i <= 14; i++) {
+      const chip = document.getElementById('cfgBootBtn' + i);
+      if (chip && chip.dataset.active === 'true') return i;
+    }
+    return 6; // fallback default
+  }
+
   function buildResetPicker() {
     const picker = document.getElementById('resetBtnPicker');
     picker.innerHTML = '';
@@ -274,6 +315,7 @@ static const char _CFG_HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
     updateZoneCountOptions();
     if (cfg.encoderZoneCount !== undefined)
       document.getElementById('encoderZoneCount').value = cfg.encoderZoneCount;
+    if (cfg.configBootButton        !== undefined) setCfgBootBtn(cfg.configBootButton);
     if (cfg.encoderZonesMode        !== undefined) setMode(cfg.encoderZonesMode);
     if (cfg.encoderZoneMaster       !== undefined) setMaster(cfg.encoderZoneMaster);
     if (cfg.encoderZoneResetButtons !== undefined) setResetButtons(cfg.encoderZoneResetButtons);
@@ -287,6 +329,7 @@ static const char _CFG_HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
       if (!el) continue;
       cfg[k] = el.type === 'checkbox' ? el.checked : el.type === 'text' ? el.value : Number(el.value);
     }
+    cfg.configBootButton        = getCfgBootBtn();
     cfg.encoderZonesMode        = document.getElementById('encoderZonesMode').value === 'true';
     cfg.encoderZoneMaster       = Number(document.getElementById('encoderZoneMaster').value);
     cfg.encoderZoneResetButtons = getResetButtons();
@@ -323,6 +366,7 @@ static const char _CFG_HTML[] PROGMEM = R"rawhtml(<!DOCTYPE html>
     }
   }
 
+  buildCfgBootPicker();
   buildResetPicker();
   setMode(false);
   updateZoneCountOptions();

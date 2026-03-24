@@ -5,6 +5,7 @@
 
 struct Config {
   String   bleDeviceName          = "ESP32-steering-wheel";
+  uint32_t configBootButton       = 6;     // Button number (1-14) held at boot to enter config mode
   bool     useEncoders            = true;
   uint32_t debounceDelayMs        = 5;     // Bounce2 button debounce (ms)
   uint32_t encoderDebounceUs      = 1000;  // Encoder debounce (µs)
@@ -27,6 +28,7 @@ inline Config loadConfig() {
   Preferences prefs;
   if (!prefs.begin("buttonbox", true)) return cfg;  // returns defaults if no NVS entry
   cfg.bleDeviceName          = prefs.getString("bleName",      cfg.bleDeviceName);
+  cfg.configBootButton       = prefs.getUInt("cfgBootBtn",    cfg.configBootButton);
   cfg.useEncoders            = prefs.getBool("useEncoders",    cfg.useEncoders);
   cfg.debounceDelayMs        = prefs.getUInt("debounceMs",     cfg.debounceDelayMs);
   cfg.encoderDebounceUs      = prefs.getUInt("encDebounceUs",  cfg.encoderDebounceUs);
@@ -46,6 +48,7 @@ inline void saveConfig(const Config& cfg) {
   Preferences prefs;
   prefs.begin("buttonbox", false);
   prefs.putString("bleName",      cfg.bleDeviceName);
+  prefs.putUInt("cfgBootBtn",    cfg.configBootButton);
   prefs.putBool("useEncoders",    cfg.useEncoders);
   prefs.putUInt("debounceMs",     cfg.debounceDelayMs);
   prefs.putUInt("encDebounceUs",  cfg.encoderDebounceUs);
@@ -63,6 +66,7 @@ inline void saveConfig(const Config& cfg) {
 inline String configToJson(const Config& cfg) {
   StaticJsonDocument<768> doc;
   doc["bleDeviceName"]          = cfg.bleDeviceName;
+  doc["configBootButton"]       = cfg.configBootButton;
   doc["useEncoders"]            = cfg.useEncoders;
   doc["debounceDelayMs"]        = cfg.debounceDelayMs;
   doc["encoderDebounceUs"]      = cfg.encoderDebounceUs;
@@ -85,6 +89,7 @@ inline bool jsonToConfig(const String& json, Config& cfg) {
   StaticJsonDocument<768> doc;
   if (deserializeJson(doc, json)) return false;
   if (doc.containsKey("bleDeviceName"))          cfg.bleDeviceName          = doc["bleDeviceName"].as<String>();
+  if (doc.containsKey("configBootButton"))       cfg.configBootButton       = doc["configBootButton"].as<uint32_t>();
   if (doc.containsKey("useEncoders"))            cfg.useEncoders            = doc["useEncoders"].as<bool>();
   if (doc.containsKey("debounceDelayMs"))        cfg.debounceDelayMs        = doc["debounceDelayMs"].as<uint32_t>();
   if (doc.containsKey("encoderDebounceUs"))      cfg.encoderDebounceUs      = doc["encoderDebounceUs"].as<uint32_t>();
