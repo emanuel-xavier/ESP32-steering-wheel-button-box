@@ -133,7 +133,7 @@
     <label><span>Bluetooth Name</span><small>Name shown when pairing</small></label>
     <input type="text" id="bleDeviceName" maxlength="32" value="ESP32-steering-wheel" style="width:190px"/>
   </div>
-  <div class="field" style="flex-direction:column;align-items:flex-start;gap:.5rem">
+  <div id="cfgBootField" class="field" style="flex-direction:column;align-items:flex-start;gap:.5rem">
     <label>
       <span>Config Mode Button</span>
       <small>Hold this button while powering on to enter Bluetooth config mode.</small>
@@ -572,6 +572,7 @@
   function onDirectBtnsToggle() {
     const on = document.getElementById('useDirectButtons').checked;
     document.getElementById('directBtnOptions').classList.toggle('hidden', !on);
+    document.getElementById('cfgBootField').classList.toggle('hidden', !on);
   }
 
   function onMatrixToggle() {
