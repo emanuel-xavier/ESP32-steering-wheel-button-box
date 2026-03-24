@@ -4,7 +4,7 @@ OUTDIR  := build
 # ── Linux ─────────────────────────────────────────────────────────────────────
 # Requires: webkit2gtk
 #   Arch:   sudo pacman -S webkit2gtk
-#   Ubuntu: sudo apt install libwebkit2gtk-4.0-dev libgtk-3-dev
+#   Ubuntu: sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev
 
 linux: $(OUTDIR)
 	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
@@ -23,8 +23,16 @@ windows: $(OUTDIR)
 		go build -ldflags="-H windowsgui" -o $(OUTDIR)/$(APP)-windows-amd64.exe .
 
 # ── Both ──────────────────────────────────────────────────────────────────────
+# Windows build is skipped automatically when mingw-w64 is not installed.
 
-all: linux windows
+all: linux
+	@if command -v x86_64-w64-mingw32-gcc >/dev/null 2>&1; then \
+		$(MAKE) windows; \
+	else \
+		echo "Skipping Windows build: x86_64-w64-mingw32-gcc not found."; \
+		echo "  Arch:   sudo pacman -S mingw-w64-gcc"; \
+		echo "  Ubuntu: sudo apt install gcc-mingw-w64"; \
+	fi
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 

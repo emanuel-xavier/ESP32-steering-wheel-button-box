@@ -1,21 +1,25 @@
 # ESP32 Steering Wheel Button Box
 
-An ESP32-based BLE gamepad for a steering wheel button box. Reads 14 physical buttons and 2 rotary encoders, transmitting inputs over Bluetooth Low Energy as a standard HID gamepad. All settings are configurable at runtime via Bluetooth — no reflashing, no WiFi, no browser needed.
+An ESP32-based BLE gamepad for a steering wheel button box. Supports up to 32 direct-wired buttons, an 8×8 button matrix, and 2 rotary encoders — all transmitted over Bluetooth Low Energy as a standard HID gamepad.
+
+All settings are configurable at runtime via the desktop app over Bluetooth. No reflashing, no WiFi, no special boot sequence required.
 
 ---
 
 ## Hardware
 
-### Buttons — 14 total (INPUT_PULLUP)
+Pin assignments are fully configurable at runtime. The defaults below match the original wiring.
 
-| Button | Pin |
-|--------|-----|
+### Direct buttons (INPUT_PULLUP, default 14 buttons)
+
+| Button | Default pin |
+|--------|-------------|
 | 1 | 2 |
 | 2 | 13 |
 | 3 | 15 |
 | 4 | 14 |
 | 5 | 16 |
-| 6 *(default config boot button)* | 17 |
+| 6 | 17 |
 | 7 | 18 |
 | 8 | 19 |
 | 9 | 21 |
@@ -25,7 +29,7 @@ An ESP32-based BLE gamepad for a steering wheel button box. Reads 14 physical bu
 | 13 | 32 |
 | 14 | 33 |
 
-### Encoders — 2 total (INPUT_PULLUP)
+### Encoders (INPUT_PULLUP, default pins)
 
 | Encoder | CLK | DT |
 |---------|-----|----|
@@ -36,119 +40,116 @@ An ESP32-based BLE gamepad for a steering wheel button box. Reads 14 physical bu
 
 ## BLE Gamepad Button Mapping
 
+Buttons are assigned in order: **direct buttons → matrix buttons → encoder buttons**.
+
 ### Normal encoder mode
+
 | Input | Gamepad button |
 |-------|---------------|
-| Physical buttons 1–14 | 1–14 |
-| Encoder 1 CW | 15 |
-| Encoder 1 CCW | 16 |
-| Encoder 2 CW | 17 |
-| Encoder 2 CCW | 18 |
+| Direct buttons 1–N | 1–N |
+| Matrix buttons (row×col, left→right, top→bottom) | N+1 … N+rows×cols |
+| Encoder 1 CW | next |
+| Encoder 1 CCW | next+1 |
+| Encoder 2 CW | next+2 |
+| Encoder 2 CCW | next+3 |
 
 ### Zones encoder mode
-| Input | Gamepad button |
-|-------|---------------|
-| Physical buttons 1–14 | 1–14 |
-| Slave encoder CW  — zone 0 | 15 |
-| Slave encoder CCW — zone 0 | 16 |
-| Slave encoder CW  — zone 1 | 17 |
-| Slave encoder CCW — zone 1 | 18 |
-| *(more pairs for each additional zone)* | … |
 
----
-
-## Encoder Modes
-
-### Normal mode
-Both encoders work independently. Each rotation direction maps to a fixed gamepad button press.
-
-### Zones mode
 One encoder acts as a **master** (zone selector) and the other as a **slave** (action encoder).
 
-- The master encoder tracks an absolute position from `0` to `zoneSteps − 1` (wraps around).
-- That position is divided into equal-sized zones: `zone = (position × zoneCount) / zoneSteps`.
-- The slave encoder triggers a different button pair for each zone, effectively multiplying the number of distinct inputs.
+- The master tracks an absolute position `0 … zoneSteps−1` (wraps around).
+- `zone = (position × zoneCount) / zoneSteps`
+- Each zone maps the slave encoder to a different button pair.
 
 **Example — 20 steps, 2 zones:**
-- Steps 0–9 → zone 0 → slave CW = button 15, slave CCW = button 16
-- Steps 10–19 → zone 1 → slave CW = button 17, slave CCW = button 18
+- Steps 0–9 → zone 0 → slave CW = button N+1, slave CCW = button N+2
+- Steps 10–19 → zone 1 → slave CW = button N+3, slave CCW = button N+4
 
-> Zone count must be a divisor of zone steps (e.g. for 20 steps: 2, 4, 5, 10, or 20).
+> Zone count must be a divisor of zone steps (e.g. for 20 steps: 2, 4, 5, 10, 20).
 
 ---
 
 ## Runtime Configuration
 
-Settings are stored in ESP32 NVS (non-volatile storage) and survive power loss. Configuration is done via Bluetooth using the desktop app — no WiFi, no browser, no network connection needed.
+Settings are stored in ESP32 NVS (non-volatile storage) and survive power loss.
 
-### Entering config mode
+### How to configure
 
-1. **Hold the config boot button (default: Button 6, pin 17) while powering on.**
-2. The device advertises itself over Bluetooth as `ButtonBox-Config`.
-3. Open the desktop app — it scans and connects automatically.
-4. Edit settings and press **Save & Reboot**.
-5. The device saves to NVS and reboots into gamepad mode.
+1. Power on the ESP32 — it immediately starts the gamepad **and** the config service simultaneously.
+2. Open the desktop app — it scans for the device by Bluetooth service UUID and connects automatically.
+3. Edit settings and press **Save & Reboot**.
+4. The device reboots with the new config. The app reconnects automatically.
 
-> The config boot button can be changed to any of the 14 physical buttons from the app itself.
-
-### Crash-counter fallback
-
-If the device reboots 3 times in a row without completing a successful startup (e.g. due to a bad config causing a crash), it automatically enters config mode so the device is always recoverable without holding any button.
+No special boot mode is needed. The config service is always available.
 
 ### Available settings
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| Bluetooth Name | `ESP32-steering-wheel` | Name shown when pairing via BLE |
-| Config Boot Button | `6` | Button number held at boot to enter config mode |
+| Bluetooth Name | `ESP32-steering-wheel` | BLE device name shown when pairing |
+| **Pin Layout** | | |
+| Use Direct Buttons | on | Enable/disable GPIO pin buttons |
+| Number of Buttons | `14` | How many direct-wired buttons (0–32) |
+| Button Pins | see Hardware | GPIO number for each button |
+| **Button Matrix** | | |
+| Use Matrix | off | Enable row/column scanning (stackable with direct buttons) |
+| Rows | `4` | Matrix rows (1–8), driven LOW when scanning |
+| Columns | `4` | Matrix columns (1–8), read with INPUT_PULLUP |
+| Row Pins / Col Pins | — | GPIO for each row output and column input |
+| **Buttons** | | |
 | Button Debounce | `5 ms` | Bounce2 debounce interval |
 | Button Task Interval | `5 ms` | Button polling rate |
-| Use Encoders | `true` | Enable / disable rotary encoders |
-| Encoder Mode | Normal | Normal or Zones |
-| Master Encoder | `0` | Zones mode: which encoder selects the zone |
-| Zone Steps | `20` | Total steps of the master encoder |
-| Zone Count | `2` | Number of equal zones (must divide Zone Steps) |
+| **Encoders** | | |
+| Use Encoders | on | Enable/disable rotary encoders |
+| Encoder Pins | see Hardware | CLK/DT GPIO for each encoder |
+| Encoder Mode | Normal | Normal (independent) or Zones |
+| Master Encoder | Encoder 1 | Zones mode: which encoder selects the active zone |
+| Zone Steps | `20` | Total detents of the master encoder |
+| Zone Count | `2` | Number of equal zones |
 | Zone Reset Combo | *(none)* | Buttons held simultaneously to reset zone position to 0 |
-| Encoder Debounce | `1000 µs` | Hardware encoder filter |
-| Encoder Press Duration | `100 ms` | Simulated key-press length |
+| Encoder Debounce | `1000 µs` | Hardware encoder debounce filter |
+| Encoder Press Duration | `100 ms` | Simulated button press length |
 | Encoder Task Interval | `5 ms` | Encoder polling rate |
+| **Advanced** | | |
+| OTA Password | *(empty)* | ArduinoOTA password for WiFi firmware updates (leave empty for none) |
 
 ---
 
 ## Desktop App
 
-A standalone desktop app that connects to the ESP32 over Bluetooth to read and write configuration. Download the latest release from the [Releases page](https://github.com/emanuel-xavier/ESP32-steering-wheel-button-box/releases) or build from source.
+A standalone native app that connects to the ESP32 over Bluetooth. No browser, no network, no extra setup.
 
-### How it works
+Download the latest release from the [Releases page](https://github.com/emanuel-xavier/ESP32-steering-wheel-button-box/releases) or build from source.
 
-1. Put the ESP32 into config mode (hold the config button at power-on)
-2. Open the app — it scans for `ButtonBox-Config` via Bluetooth automatically
-3. Config is read from the device and shown in the UI
-4. Edit settings and press **Save & Reboot**
+### Features
+
+- Auto-scan and connect on launch
+- Auto-reconnect when the device reboots after saving
+- **Debug monitor** — toggle with the Debug button to see button/matrix/encoder events in real time, including currently held buttons and a rolling event log
+- **OTA firmware update** — in the Advanced section, enter OTA mode to upload a new sketch over WiFi from the Arduino IDE
 
 ### Build requirements
 
 | Platform | Requirement |
 |----------|-------------|
-| Linux | `webkit2gtk` — `sudo pacman -S webkit2gtk` (Arch) / `sudo apt install libwebkit2gtk-4.0-dev libgtk-3-dev` |
-| Linux (Bluetooth) | BlueZ must be running. User must have permission: `sudo usermod -aG bluetooth $USER` |
-| Windows (cross-compile from Linux) | `mingw-w64` — `sudo pacman -S mingw-w64-gcc` (Arch) / `sudo apt install gcc-mingw-w64` |
-| Windows (native build) | Go + gcc via [MSYS2](https://www.msys2.org/) |
-| macOS | Xcode Command Line Tools — `xcode-select --install` |
+| Linux | `webkit2gtk` — `sudo pacman -S webkit2gtk` (Arch) / `sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev` (Ubuntu 22.04+) |
+| Linux (Bluetooth) | BlueZ must be running: `sudo usermod -aG bluetooth $USER` |
+| Windows cross-compile | `mingw-w64` — `sudo pacman -S mingw-w64-gcc` (Arch) / `sudo apt install gcc-mingw-w64` (Ubuntu) |
+| Windows native | Go + gcc via [MSYS2](https://www.msys2.org/) |
 
 ### Build
 
 ```bash
 cd desktop
 
-# Linux
+# Linux only
 make linux
 
-# Windows executable (cross-compiled from Linux)
+# Windows executable (cross-compiled from Linux, requires mingw-w64)
 make windows
 
-# Both
-make
+# Both — skips Windows automatically if mingw-w64 is not installed
+make all
 ```
 
 Binaries are placed in `desktop/build/`.
@@ -159,6 +160,17 @@ Binaries are placed in `desktop/build/`.
 cd desktop
 go run .
 ```
+
+---
+
+## OTA Firmware Update
+
+1. In the desktop app, open the **Advanced** section.
+2. Optionally set an OTA password and save.
+3. Click **Enter OTA Mode** — the device stops BLE and starts a WiFi access point named `ButtonBox-OTA`.
+4. Connect your PC to the `ButtonBox-OTA` network.
+5. In Arduino IDE: **Tools → Port → buttonbox** (the OTA network port).
+6. Upload your sketch normally.
 
 ---
 
@@ -173,19 +185,19 @@ Install via **Arduino Library Manager**:
 | [NimBLE-Arduino](https://github.com/h2zero/NimBLE-Arduino) | 1.4.1 |
 | [ArduinoJson](https://arduinojson.org) | ≥ 6.x |
 
-Built-in ESP32 Arduino core libraries used: `Preferences`.
+Built-in ESP32 Arduino core libraries used: `Preferences`, `WiFi`, `ArduinoOTA`.
 
 ---
 
-## Debug Output
+## Serial Debug Output
 
-Uncomment (or keep) the first line of `ec2-button-box.ino` to enable serial logging at 115200 baud:
+Enable serial logging at 115200 baud by keeping this line at the top of the `.ino`:
 
 ```cpp
 #define SERIAL_DEBUG
 ```
 
-Logs include: button press/release, encoder direction and button number, master encoder position and active zone, boot counter, and BLE config mode startup messages.
+Logs include: button press/release (pin number), matrix events (row/col), encoder direction and button number, master encoder position and active zone, and BLE config service startup.
 
 ---
 
@@ -193,13 +205,14 @@ Logs include: button press/release, encoder direction and button number, master 
 
 ```
 ├── ec2-button-box/
-│   ├── ec2-button-box.ino   # Entry point, tasks, pin assignments
-│   ├── Config.h             # Config struct, NVS load/save, JSON helpers
-│   ├── ConfigBLE.h          # BLE GATT config server (NimBLE)
-│   └── Encoder.h            # Rotary encoder class (Enc namespace)
+│   ├── ec2-button-box.ino   # Entry point, FreeRTOS tasks, setup
+│   ├── Config.h             # Config struct, NVS load/save, JSON serialisation
+│   ├── ConfigBLE.h          # Always-on BLE config GATT service (NimBLE)
+│   ├── OTA.h                # WiFi soft-AP OTA mode
+│   └── Encoder.h            # Rotary encoder driver (Enc namespace)
 ├── desktop/
-│   ├── main.go              # BLE client + local HTTP server + webview window
-│   ├── index.html           # Config UI served by the desktop app
+│   ├── main.go              # BLE central + local HTTP server + webview window
+│   ├── index.html           # Config UI (served by the desktop app)
 │   ├── Makefile             # Linux and Windows build targets
 │   ├── go.mod
 │   └── go.sum
