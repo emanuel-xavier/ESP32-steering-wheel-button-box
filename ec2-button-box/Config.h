@@ -26,6 +26,12 @@ struct Config {
   // Pin assignments — GPIO numbers for each button and encoder channel
   uint8_t  buttonPins[32]    = {2, 13, 15, 14, 16, 17, 18, 19, 21, 22, 23, 25, 32, 33};
   uint8_t  encoderPins[2][2] = {{26, 27}, {4, 5}};  // [enc][clk=0/dt=1]
+  // Button matrix — row/col scanning, active alongside direct buttons
+  bool     useMatrix          = false;
+  uint8_t  matrixRows         = 4;
+  uint8_t  matrixCols         = 4;
+  uint8_t  matrixRowPins[8]   = {};   // OUTPUT, driven LOW per row
+  uint8_t  matrixColPins[8]   = {};   // INPUT_PULLUP, read per column
 };
 
 inline Config loadConfig() {
@@ -49,6 +55,11 @@ inline Config loadConfig() {
   cfg.encoderZoneResetMask   = prefs.getUInt("encResetMask",   cfg.encoderZoneResetMask);
   prefs.getBytes("btnPins", cfg.buttonPins,  sizeof(cfg.buttonPins));
   prefs.getBytes("encPins", cfg.encoderPins, sizeof(cfg.encoderPins));
+  cfg.useMatrix  = prefs.getBool("useMat",      cfg.useMatrix);
+  cfg.matrixRows = prefs.getUChar("matRows",    cfg.matrixRows);
+  cfg.matrixCols = prefs.getUChar("matCols",    cfg.matrixCols);
+  prefs.getBytes("matRowPins", cfg.matrixRowPins, sizeof(cfg.matrixRowPins));
+  prefs.getBytes("matColPins", cfg.matrixColPins, sizeof(cfg.matrixColPins));
   prefs.end();
   return cfg;
 }
@@ -71,8 +82,13 @@ inline void saveConfig(const Config& cfg) {
   prefs.putUInt("encZoneSteps",   cfg.encoderZoneSteps);
   prefs.putUInt("encZoneCount",   cfg.encoderZoneCount);
   prefs.putUInt("encResetMask",   cfg.encoderZoneResetMask);
-  prefs.putBytes("btnPins",  cfg.buttonPins,  32);
-  prefs.putBytes("encPins",  cfg.encoderPins, sizeof(cfg.encoderPins));
+  prefs.putBytes("btnPins",    cfg.buttonPins,     32);
+  prefs.putBytes("encPins",    cfg.encoderPins,    sizeof(cfg.encoderPins));
+  prefs.putBool("useMat",      cfg.useMatrix);
+  prefs.putUChar("matRows",    cfg.matrixRows);
+  prefs.putUChar("matCols",    cfg.matrixCols);
+  prefs.putBytes("matRowPins", cfg.matrixRowPins,  sizeof(cfg.matrixRowPins));
+  prefs.putBytes("matColPins", cfg.matrixColPins,  sizeof(cfg.matrixColPins));
   prefs.end();
 }
 
@@ -103,6 +119,13 @@ inline String configToJson(const Config& cfg) {
     row.add(cfg.encoderPins[i][0]);
     row.add(cfg.encoderPins[i][1]);
   }
+  doc["useMatrix"]  = cfg.useMatrix;
+  doc["matrixRows"] = cfg.matrixRows;
+  doc["matrixCols"] = cfg.matrixCols;
+  JsonArray mrArr = doc.createNestedArray("matrixRowPins");
+  for (int i = 0; i < (int)cfg.matrixRows; i++) mrArr.add(cfg.matrixRowPins[i]);
+  JsonArray mcArr = doc.createNestedArray("matrixColPins");
+  for (int i = 0; i < (int)cfg.matrixCols; i++) mcArr.add(cfg.matrixColPins[i]);
   String out;
   serializeJson(doc, out);
   return out;
@@ -129,6 +152,17 @@ inline bool jsonToConfig(const String& json, Config& cfg) {
     cfg.encoderZoneResetMask = 0;
     for (int btn : doc["encoderZoneResetButtons"].as<JsonArray>())
       if (btn >= 1 && btn <= (int)cfg.numButtons) cfg.encoderZoneResetMask |= (1u << (btn - 1));
+  }
+  if (doc.containsKey("useMatrix"))      cfg.useMatrix  = doc["useMatrix"].as<bool>();
+  if (doc.containsKey("matrixRows"))     cfg.matrixRows = constrain(doc["matrixRows"].as<int>(), 1, 8);
+  if (doc.containsKey("matrixCols"))     cfg.matrixCols = constrain(doc["matrixCols"].as<int>(), 1, 8);
+  if (doc.containsKey("matrixRowPins")) {
+    JsonArrayConst mr = doc["matrixRowPins"].as<JsonArrayConst>();
+    for (int i = 0; i < 8 && i < (int)mr.size(); i++) cfg.matrixRowPins[i] = mr[i].as<uint8_t>();
+  }
+  if (doc.containsKey("matrixColPins")) {
+    JsonArrayConst mc = doc["matrixColPins"].as<JsonArrayConst>();
+    for (int i = 0; i < 8 && i < (int)mc.size(); i++) cfg.matrixColPins[i] = mc[i].as<uint8_t>();
   }
   if (doc.containsKey("buttonPins")) {
     JsonArrayConst bp = doc["buttonPins"].as<JsonArrayConst>();

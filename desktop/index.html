@@ -67,6 +67,7 @@
     .pin-cell input{width:46px;text-align:center;padding:.3rem .2rem;font-size:.85rem}
     .enc-pin-row{display:flex;align-items:center;gap:.6rem}
     .enc-pin-row span{font-size:.8rem;color:var(--muted);min-width:28px}
+    .matrix-pin-grid{display:grid;gap:.4rem;margin-top:.6rem}
     .actions{display:flex;gap:.75rem;margin-top:1.25rem;flex-wrap:wrap}
     #status{margin-top:.9rem;padding:.6rem .9rem;border-radius:var(--r);
             font-size:.88rem;display:none}
@@ -163,6 +164,32 @@
     <div class="enc-pin-row">
       <span>CLK</span><input type="number" id="encPin1clk" min="0" max="39" value="4" style="width:60px"/>
       <span>DT</span><input type="number" id="encPin1dt"  min="0" max="39" value="5" style="width:60px"/>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Button Matrix</h2>
+  <div class="field">
+    <label><span>Use Matrix</span><small>Row/column scan — active alongside direct pins</small></label>
+    <label class="toggle"><input type="checkbox" id="useMatrix" onchange="onMatrixToggle()"/><span class="slider"></span></label>
+  </div>
+  <div id="matrixOptions" class="hidden">
+    <div class="field">
+      <label><span>Rows</span><small>1–8</small></label>
+      <input type="number" id="matrixRows" min="1" max="8" value="4" onchange="onMatrixDimsChange()"/>
+    </div>
+    <div class="field">
+      <label><span>Columns</span><small>1–8</small></label>
+      <input type="number" id="matrixCols" min="1" max="8" value="4" onchange="onMatrixDimsChange()"/>
+    </div>
+    <div class="field" style="flex-direction:column;align-items:flex-start;gap:.4rem">
+      <label><span>Row Pins</span><small>GPIO driven LOW when scanning a row</small></label>
+      <div class="matrix-pin-grid" id="matRowPinGrid"></div>
+    </div>
+    <div class="field" style="flex-direction:column;align-items:flex-start;gap:.4rem">
+      <label><span>Column Pins</span><small>GPIO read with INPUT_PULLUP per column</small></label>
+      <div class="matrix-pin-grid" id="matColPinGrid"></div>
     </div>
   </div>
 </div>
@@ -265,7 +292,8 @@
 <script>
   const FIELDS = ['bleDeviceName','numButtons','otaPassword','useEncoders','debounceDelayMs',
                   'encoderDebounceUs','buttonTaskDelayMs','encoderPressDurationMs',
-                  'encoderTaskDelayMs','encoderZoneSteps','encoderZoneCount'];
+                  'encoderTaskDelayMs','encoderZoneSteps','encoderZoneCount',
+                  'useMatrix','matrixRows','matrixCols'];
 
   // ── Discovery ──────────────────────────────────────────────────────────────
 
@@ -444,6 +472,20 @@
         if (el) el.value = cfg.encoderPins[enc][ch];
       });
     }
+    // Matrix
+    onMatrixToggle();
+    if (cfg.matrixRows !== undefined || cfg.matrixCols !== undefined) {
+      buildMatrixPinGrid('matRowPinGrid', cfg.matrixRows || 4, 'R');
+      buildMatrixPinGrid('matColPinGrid', cfg.matrixCols || 4, 'C');
+    }
+    if (cfg.matrixRowPins) cfg.matrixRowPins.forEach((p, i) => {
+      const el = document.getElementById('matRowPinGrid_' + (i + 1));
+      if (el) el.value = p;
+    });
+    if (cfg.matrixColPins) cfg.matrixColPins.forEach((p, i) => {
+      const el = document.getElementById('matColPinGrid_' + (i + 1));
+      if (el) el.value = p;
+    });
     onEncoderToggle();
   }
 
@@ -465,6 +507,12 @@
       [Number(document.getElementById('encPin0clk').value), Number(document.getElementById('encPin0dt').value)],
       [Number(document.getElementById('encPin1clk').value), Number(document.getElementById('encPin1dt').value)],
     ];
+    const rowCount = Math.max(1, Math.min(8, Number(document.getElementById('matrixRows').value) || 4));
+    const colCount = Math.max(1, Math.min(8, Number(document.getElementById('matrixCols').value) || 4));
+    cfg.matrixRowPins = Array.from({length: rowCount}, (_, i) =>
+      Number(document.getElementById('matRowPinGrid_' + (i + 1))?.value ?? 0));
+    cfg.matrixColPins = Array.from({length: colCount}, (_, i) =>
+      Number(document.getElementById('matColPinGrid_' + (i + 1))?.value ?? 0));
     return cfg;
   }
 
@@ -501,6 +549,36 @@
     } catch (e) {
       btn.disabled = false;
       setStatus('Save failed: ' + e.message, 'error');
+    }
+  }
+
+  // ── Matrix pin grids ───────────────────────────────────────────────────────
+
+  function onMatrixToggle() {
+    const on = document.getElementById('useMatrix').checked;
+    document.getElementById('matrixOptions').classList.toggle('hidden', !on);
+  }
+
+  function onMatrixDimsChange() {
+    buildMatrixPinGrid('matRowPinGrid', Number(document.getElementById('matrixRows').value), 'R');
+    buildMatrixPinGrid('matColPinGrid', Number(document.getElementById('matrixCols').value), 'C');
+  }
+
+  function buildMatrixPinGrid(gridId, count, prefix) {
+    count = Math.max(1, Math.min(8, count || 1));
+    const saved = {};
+    for (let i = 1; i <= 8; i++) {
+      const el = document.getElementById(gridId + '_' + i);
+      if (el) saved[i] = Number(el.value);
+    }
+    const grid = document.getElementById(gridId);
+    grid.style.gridTemplateColumns = 'repeat(' + count + ', 1fr)';
+    grid.innerHTML = '';
+    for (let i = 1; i <= count; i++) {
+      const cell = document.createElement('div');
+      cell.className = 'pin-cell';
+      cell.innerHTML = `<span>${prefix}${i}</span><input type="number" id="${gridId}_${i}" min="0" max="39" value="${saved[i] ?? 0}"/>`;
+      grid.appendChild(cell);
     }
   }
 
@@ -570,6 +648,8 @@
   // ── Init ───────────────────────────────────────────────────────────────────
   buildBtnPinGrid(14);
   buildCfgBootPicker(14);
+  buildMatrixPinGrid('matRowPinGrid', 4, 'R');
+  buildMatrixPinGrid('matColPinGrid', 4, 'C');
   buildResetPicker();
   setMode(false);
   updateZoneCountOptions();

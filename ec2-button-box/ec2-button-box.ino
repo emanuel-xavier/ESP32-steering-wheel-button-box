@@ -20,7 +20,7 @@
 #include "ConfigBLE.h"
 #include "Encoder.h"
 
-#define MAX_BUTTONS      32  // compile-time allocation limit
+#define MAX_BUTTONS     128  // direct(32) + matrix(64) + encoders(16) + headroom
 #define NUM_OF_ENCODERS   2
 
 // ── Globals ─────────────────────────────────────────────────────────────────
@@ -34,6 +34,11 @@ byte         physicalButtons[MAX_BUTTONS + MAX_ENC_BUTTONS];
 
 Enc::Encoder     encoders[NUM_OF_ENCODERS];
 volatile uint32_t buttonState    = 0;  // bitmask: bit i set = buttonPins[i] currently pressed
+
+// First physicalButtons index reserved for encoder buttons (after direct + matrix buttons)
+inline byte encBtnBase() {
+  return cfg.numButtons + (cfg.useMatrix ? (int)cfg.matrixRows * cfg.matrixCols : 0);
+}
 
 // ── Tasks ───────────────────────────────────────────────────────────────────
 void buttonTask(void*) {
@@ -59,6 +64,35 @@ void buttonTask(void*) {
         }
       }
       if (dirty) pBleGamepad->sendReport();
+
+      // ── Matrix scan ──────────────────────────────────────────────────────
+      if (cfg.useMatrix) {
+        static bool matrixState[8][8] = {};
+        for (uint8_t r = 0; r < cfg.matrixRows; r++) {
+          digitalWrite(cfg.matrixRowPins[r], LOW);
+          delayMicroseconds(10);
+          for (uint8_t c = 0; c < cfg.matrixCols; c++) {
+            bool pressed = (digitalRead(cfg.matrixColPins[c]) == LOW);
+            if (pressed != matrixState[r][c]) {
+              matrixState[r][c] = pressed;
+              byte bleBtn = physicalButtons[cfg.numButtons + r * cfg.matrixCols + c];
+              if (pressed) {
+                pBleGamepad->press(bleBtn);
+                #ifdef SERIAL_DEBUG
+                  Serial.printf("Matrix [%d][%d] pressed  -> button %d\n", r, c, bleBtn);
+                #endif
+              } else {
+                pBleGamepad->release(bleBtn);
+                #ifdef SERIAL_DEBUG
+                  Serial.printf("Matrix [%d][%d] released -> button %d\n", r, c, bleBtn);
+                #endif
+              }
+              pBleGamepad->sendReport();
+            }
+          }
+          digitalWrite(cfg.matrixRowPins[r], HIGH);
+        }
+      }
     }
     #ifdef SERIAL_DEBUG
     else { Serial.println("BLE not connected"); }
@@ -74,7 +108,7 @@ void encoderTask(void*) {
         Enc::Move m = encoders[i].read();
         if (m == Enc::none) continue;
 
-        byte idx = cfg.numButtons + i * 2 + (m == Enc::ccw ? 1 : 0);
+        byte idx = encBtnBase() + i * 2 + (m == Enc::ccw ? 1 : 0);
         #ifdef SERIAL_DEBUG
           Serial.printf("Encoder %d %s -> button %d (clk pin %d)\n",
             i, (m == Enc::ccw) ? "CCW" : "CW", physicalButtons[idx], cfg.encoderPins[i][0]);
@@ -128,7 +162,7 @@ void encoderZonesTask(void*) {
 
       Enc::Move m2 = encoders[slave].read();
       if (m2 != Enc::none) {
-        byte idx = cfg.numButtons + zone * 2 + (m2 == Enc::ccw ? 1 : 0);
+        byte idx = encBtnBase() + zone * 2 + (m2 == Enc::ccw ? 1 : 0);
         #ifdef SERIAL_DEBUG
           Serial.printf("Zone %d | Enc%d %s -> btn %d (clk pin %d)\n",
             zone, slave, (m2 == Enc::ccw) ? "CCW" : "CW", physicalButtons[idx], cfg.encoderPins[slave][0]);
@@ -153,6 +187,16 @@ void setupButtons() {
   }
 }
 
+void setupMatrix() {
+  for (uint8_t c = 0; c < cfg.matrixCols; c++) {
+    pinMode(cfg.matrixColPins[c], INPUT_PULLUP);
+  }
+  for (uint8_t r = 0; r < cfg.matrixRows; r++) {
+    pinMode(cfg.matrixRowPins[r], OUTPUT);
+    digitalWrite(cfg.matrixRowPins[r], HIGH);  // idle HIGH — not selecting any row
+  }
+}
+
 void setupEncoders() {
   for (byte i = 0; i < NUM_OF_ENCODERS; i++) {
     encoders[i] = Enc::Encoder(cfg.encoderPins[i][0], cfg.encoderPins[i][1], cfg.encoderDebounceUs);
@@ -164,9 +208,10 @@ void setupBleGamepad() {
   int encButtons = 0;
   if (cfg.useEncoders)
     encButtons = cfg.encoderZonesMode ? (int)cfg.encoderZoneCount * 2 : NUM_OF_ENCODERS * 2;
+  int matButtons = cfg.useMatrix ? (int)cfg.matrixRows * cfg.matrixCols : 0;
   pBleGamepad = new BleGamepad(cfg.bleDeviceName.c_str(), "emanuelxavier.dev");
   BleGamepadConfiguration gcfg;
-  gcfg.setButtonCount(cfg.numButtons + encButtons);
+  gcfg.setButtonCount(cfg.numButtons + matButtons + encButtons);
   gcfg.setAutoReport(false);
   pBleGamepad->begin(&gcfg);
 }
@@ -213,6 +258,7 @@ void setup() {
   }
 
   setupButtons();
+  if (cfg.useMatrix)   setupMatrix();
   if (cfg.useEncoders) setupEncoders();
   setupBleGamepad();
 
