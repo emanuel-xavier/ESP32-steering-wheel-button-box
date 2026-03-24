@@ -29,8 +29,6 @@ static Config cfg;
 Bounce       debouncers[NUM_OF_BUTTONS];
 BleGamepad*  pBleGamepad = nullptr;
 
-byte         buttonPins[NUM_OF_BUTTONS]        = {2, 13, 15, 14, 16, 17, 18, 19, 21, 22, 23, 25, 32, 33};
-byte         encoderPins[NUM_OF_ENCODERS][2]   = {{26, 27}, {4, 5}};
 #define MAX_ENC_BUTTONS  16  // supports up to 8 zones
 byte         physicalButtons[NUM_OF_BUTTONS + MAX_ENC_BUTTONS];
 
@@ -50,14 +48,14 @@ void buttonTask(void*) {
           pBleGamepad->press(physicalButtons[i]);
           dirty = true;
           #ifdef SERIAL_DEBUG
-            Serial.printf("Button %d pressed  (pin %d)\n", physicalButtons[i], buttonPins[i]);
+            Serial.printf("Button %d pressed  (pin %d)\n", physicalButtons[i], cfg.buttonPins[i]);
           #endif
         } else if (debouncers[i].rose()) {
           buttonState &= ~(1u << i);
           pBleGamepad->release(physicalButtons[i]);
           dirty = true;
           #ifdef SERIAL_DEBUG
-            Serial.printf("Button %d released (pin %d)\n", physicalButtons[i], buttonPins[i]);
+            Serial.printf("Button %d released (pin %d)\n", physicalButtons[i], cfg.buttonPins[i]);
           #endif
         }
       }
@@ -80,7 +78,7 @@ void encoderTask(void*) {
         byte idx = encoderBtnStart + i * 2 + (m == Enc::ccw ? 1 : 0);
         #ifdef SERIAL_DEBUG
           Serial.printf("Encoder %d %s -> button %d (clk pin %d)\n",
-            i, (m == Enc::ccw) ? "CCW" : "CW", physicalButtons[idx], encoderPins[i][0]);
+            i, (m == Enc::ccw) ? "CCW" : "CW", physicalButtons[idx], cfg.encoderPins[i][0]);
         #endif
         pBleGamepad->press(physicalButtons[idx]);
         pBleGamepad->sendReport();
@@ -126,7 +124,7 @@ void encoderZonesTask(void*) {
       #ifdef SERIAL_DEBUG
         if (m1 != Enc::none)
           Serial.printf("Master enc%d %s -> pos %d / zone %d (clk pin %d)\n",
-            master, (m1 == Enc::cw) ? "CW" : "CCW", position, zone, encoderPins[master][0]);
+            master, (m1 == Enc::cw) ? "CW" : "CCW", position, zone, cfg.encoderPins[master][0]);
       #endif
 
       Enc::Move m2 = encoders[slave].read();
@@ -134,7 +132,7 @@ void encoderZonesTask(void*) {
         byte idx = encoderBtnStart + zone * 2 + (m2 == Enc::ccw ? 1 : 0);
         #ifdef SERIAL_DEBUG
           Serial.printf("Zone %d | Enc%d %s -> btn %d (clk pin %d)\n",
-            zone, slave, (m2 == Enc::ccw) ? "CCW" : "CW", physicalButtons[idx], encoderPins[slave][0]);
+            zone, slave, (m2 == Enc::ccw) ? "CCW" : "CW", physicalButtons[idx], cfg.encoderPins[slave][0]);
         #endif
         pBleGamepad->press(physicalButtons[idx]);
         pBleGamepad->sendReport();
@@ -150,15 +148,15 @@ void encoderZonesTask(void*) {
 // ── Setup helpers ────────────────────────────────────────────────────────────
 void setupButtons() {
   for (byte i = 0; i < NUM_OF_BUTTONS; i++) {
-    pinMode(buttonPins[i], INPUT_PULLUP);
-    debouncers[i].attach(buttonPins[i]);
+    pinMode(cfg.buttonPins[i], INPUT_PULLUP);
+    debouncers[i].attach(cfg.buttonPins[i]);
     debouncers[i].interval(cfg.debounceDelayMs);
   }
 }
 
 void setupEncoders() {
   for (byte i = 0; i < NUM_OF_ENCODERS; i++) {
-    encoders[i] = Enc::Encoder(encoderPins[i][0], encoderPins[i][1], cfg.encoderDebounceUs);
+    encoders[i] = Enc::Encoder(cfg.encoderPins[i][0], cfg.encoderPins[i][1], cfg.encoderDebounceUs);
     encoders[i].begin();
   }
 }
@@ -184,7 +182,7 @@ void setup() {
 
   // Config mode: hold the configured button while powering on (default: button 6, pin 17)
   uint32_t bootBtnIdx = constrain(cfg.configBootButton, 1u, (uint32_t)NUM_OF_BUTTONS) - 1;
-  byte cfgPin = buttonPins[bootBtnIdx];
+  byte cfgPin = cfg.buttonPins[bootBtnIdx];
   pinMode(cfgPin, INPUT_PULLUP);
   delay(100); // let pin settle after power-on
   if (digitalRead(cfgPin) == LOW) {

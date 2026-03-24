@@ -22,6 +22,9 @@ struct Config {
   // Bitmask of physical buttons (bit N = button N+1) that must all be held simultaneously
   // to reset the master encoder position to 0. 0 = feature disabled.
   uint32_t encoderZoneResetMask   = 0;
+  // Pin assignments — GPIO numbers for each button and encoder channel
+  uint8_t  buttonPins[14]    = {2, 13, 15, 14, 16, 17, 18, 19, 21, 22, 23, 25, 32, 33};
+  uint8_t  encoderPins[2][2] = {{26, 27}, {4, 5}};  // [enc][clk=0/dt=1]
 };
 
 inline Config loadConfig() {
@@ -42,6 +45,8 @@ inline Config loadConfig() {
   cfg.encoderZoneSteps       = prefs.getUInt("encZoneSteps",   cfg.encoderZoneSteps);
   cfg.encoderZoneCount       = prefs.getUInt("encZoneCount",   cfg.encoderZoneCount);
   cfg.encoderZoneResetMask   = prefs.getUInt("encResetMask",   cfg.encoderZoneResetMask);
+  prefs.getBytes("btnPins", cfg.buttonPins,  sizeof(cfg.buttonPins));
+  prefs.getBytes("encPins", cfg.encoderPins, sizeof(cfg.encoderPins));
   prefs.end();
   return cfg;
 }
@@ -63,11 +68,13 @@ inline void saveConfig(const Config& cfg) {
   prefs.putUInt("encZoneSteps",   cfg.encoderZoneSteps);
   prefs.putUInt("encZoneCount",   cfg.encoderZoneCount);
   prefs.putUInt("encResetMask",   cfg.encoderZoneResetMask);
+  prefs.putBytes("btnPins",  cfg.buttonPins,  sizeof(cfg.buttonPins));
+  prefs.putBytes("encPins",  cfg.encoderPins, sizeof(cfg.encoderPins));
   prefs.end();
 }
 
 inline String configToJson(const Config& cfg) {
-  StaticJsonDocument<896> doc;
+  StaticJsonDocument<1280> doc;
   doc["bleDeviceName"]          = cfg.bleDeviceName;
   doc["configBootButton"]       = cfg.configBootButton;
   doc["otaPassword"]            = cfg.otaPassword;
@@ -84,13 +91,21 @@ inline String configToJson(const Config& cfg) {
   JsonArray resetArr = doc.createNestedArray("encoderZoneResetButtons");
   for (int i = 0; i < 14; i++)
     if (cfg.encoderZoneResetMask & (1u << i)) resetArr.add(i + 1);
+  JsonArray bpArr = doc.createNestedArray("buttonPins");
+  for (int i = 0; i < 14; i++) bpArr.add(cfg.buttonPins[i]);
+  JsonArray epArr = doc.createNestedArray("encoderPins");
+  for (int i = 0; i < 2; i++) {
+    JsonArray row = epArr.createNestedArray();
+    row.add(cfg.encoderPins[i][0]);
+    row.add(cfg.encoderPins[i][1]);
+  }
   String out;
   serializeJson(doc, out);
   return out;
 }
 
 inline bool jsonToConfig(const String& json, Config& cfg) {
-  StaticJsonDocument<896> doc;
+  StaticJsonDocument<1280> doc;
   if (deserializeJson(doc, json)) return false;
   if (doc.containsKey("bleDeviceName"))          cfg.bleDeviceName          = doc["bleDeviceName"].as<String>();
   if (doc.containsKey("configBootButton"))       cfg.configBootButton       = doc["configBootButton"].as<uint32_t>();
@@ -109,6 +124,19 @@ inline bool jsonToConfig(const String& json, Config& cfg) {
     cfg.encoderZoneResetMask = 0;
     for (int btn : doc["encoderZoneResetButtons"].as<JsonArray>())
       if (btn >= 1 && btn <= 14) cfg.encoderZoneResetMask |= (1u << (btn - 1));
+  }
+  if (doc.containsKey("buttonPins")) {
+    JsonArrayConst bp = doc["buttonPins"].as<JsonArrayConst>();
+    for (int i = 0; i < 14 && i < (int)bp.size(); i++)
+      cfg.buttonPins[i] = bp[i].as<uint8_t>();
+  }
+  if (doc.containsKey("encoderPins")) {
+    JsonArrayConst ep = doc["encoderPins"].as<JsonArrayConst>();
+    for (int i = 0; i < 2 && i < (int)ep.size(); i++) {
+      JsonArrayConst row = ep[i].as<JsonArrayConst>();
+      for (int j = 0; j < 2 && j < (int)row.size(); j++)
+        cfg.encoderPins[i][j] = row[j].as<uint8_t>();
+    }
   }
   return true;
 }

@@ -61,6 +61,12 @@
     details summary::before{content:'▶';font-size:.65rem;transition:transform .2s;display:inline-block}
     details[open] summary::before{transform:rotate(90deg)}
     details summary:hover{color:var(--text)}
+    .pin-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:.4rem;margin-top:.6rem}
+    .pin-cell{display:flex;flex-direction:column;align-items:center;gap:.2rem}
+    .pin-cell span{font-size:.7rem;color:var(--muted);font-weight:600}
+    .pin-cell input{width:46px;text-align:center;padding:.3rem .2rem;font-size:.85rem}
+    .enc-pin-row{display:flex;align-items:center;gap:.6rem}
+    .enc-pin-row span{font-size:.8rem;color:var(--muted);min-width:28px}
     .actions{display:flex;gap:.75rem;margin-top:1.25rem;flex-wrap:wrap}
     #status{margin-top:.9rem;padding:.6rem .9rem;border-radius:var(--r);
             font-size:.88rem;display:none}
@@ -132,6 +138,28 @@
       <small>Hold this button while powering on to enter Bluetooth config mode.</small>
     </label>
     <div id="cfgBootPicker" style="display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.2rem"></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Pin Layout</h2>
+  <div class="field" style="flex-direction:column;align-items:flex-start;gap:.4rem">
+    <label><span>Button Pins</span><small>GPIO number for each button (1–14)</small></label>
+    <div class="pin-grid" id="btnPinGrid"></div>
+  </div>
+  <div class="field">
+    <label><span>Encoder 1</span><small>CLK / DT pins</small></label>
+    <div class="enc-pin-row">
+      <span>CLK</span><input type="number" id="encPin0clk" min="0" max="39" value="26" style="width:60px"/>
+      <span>DT</span><input type="number" id="encPin0dt"  min="0" max="39" value="27" style="width:60px"/>
+    </div>
+  </div>
+  <div class="field">
+    <label><span>Encoder 2</span><small>CLK / DT pins</small></label>
+    <div class="enc-pin-row">
+      <span>CLK</span><input type="number" id="encPin1clk" min="0" max="39" value="4" style="width:60px"/>
+      <span>DT</span><input type="number" id="encPin1dt"  min="0" max="39" value="5" style="width:60px"/>
+    </div>
   </div>
 </div>
 
@@ -392,6 +420,18 @@
     if (cfg.encoderZonesMode       !== undefined) setMode(cfg.encoderZonesMode);
     if (cfg.encoderZoneMaster      !== undefined) setMaster(cfg.encoderZoneMaster);
     if (cfg.encoderZoneResetButtons !== undefined) setResetButtons(cfg.encoderZoneResetButtons);
+    if (cfg.buttonPins !== undefined)
+      cfg.buttonPins.forEach((pin, i) => {
+        const el = document.getElementById('btnPin' + (i + 1));
+        if (el) el.value = pin;
+      });
+    if (cfg.encoderPins !== undefined) {
+      const ids = [['encPin0clk',0,0],['encPin0dt',0,1],['encPin1clk',1,0],['encPin1dt',1,1]];
+      ids.forEach(([id, enc, ch]) => {
+        const el = document.getElementById(id);
+        if (el) el.value = cfg.encoderPins[enc][ch];
+      });
+    }
     onEncoderToggle();
   }
 
@@ -406,6 +446,12 @@
     cfg.encoderZonesMode        = document.getElementById('encoderZonesMode').value === 'true';
     cfg.encoderZoneMaster       = Number(document.getElementById('encoderZoneMaster').value);
     cfg.encoderZoneResetButtons = getResetButtons();
+    cfg.buttonPins = Array.from({length: 14}, (_, i) =>
+      Number(document.getElementById('btnPin' + (i + 1))?.value ?? DEFAULT_BTN_PINS[i]));
+    cfg.encoderPins = [
+      [Number(document.getElementById('encPin0clk').value), Number(document.getElementById('encPin0dt').value)],
+      [Number(document.getElementById('encPin1clk').value), Number(document.getElementById('encPin1dt').value)],
+    ];
     return cfg;
   }
 
@@ -479,7 +525,23 @@
     }
   }
 
+  // ── Pin grid ───────────────────────────────────────────────────────────────
+
+  const DEFAULT_BTN_PINS = [2,13,15,14,16,17,18,19,21,22,23,25,32,33];
+
+  function buildBtnPinGrid() {
+    const grid = document.getElementById('btnPinGrid');
+    grid.innerHTML = '';
+    for (let i = 1; i <= 14; i++) {
+      const cell = document.createElement('div');
+      cell.className = 'pin-cell';
+      cell.innerHTML = `<span>B${i}</span><input type="number" id="btnPin${i}" min="0" max="39" value="${DEFAULT_BTN_PINS[i-1]}"/>`;
+      grid.appendChild(cell);
+    }
+  }
+
   // ── Init ───────────────────────────────────────────────────────────────────
+  buildBtnPinGrid();
   buildCfgBootPicker();
   buildResetPicker();
   setMode(false);
