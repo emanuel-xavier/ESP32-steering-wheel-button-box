@@ -16,7 +16,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: desktop/go.mod
+          go-version: '1.23.x'
 
       - name: Install Linux build dependencies
         run: |
@@ -37,10 +37,24 @@ jobs:
           CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
             go build -ldflags="-s -w" -o build/buttonbox-config-linux-amd64 .
 
+      - name: Create mingw C++ wrapper (strips -mthreads, dropped by GCC 9+)
+        run: |
+          cat << 'WRAPPER' | sudo tee /usr/local/bin/x86_64-w64-mingw32-g++-wrap > /dev/null
+          #!/bin/bash
+          args=()
+          for arg in "$@"; do
+            [ "$arg" != "-mthreads" ] && args+=("$arg")
+          done
+          exec /usr/bin/x86_64-w64-mingw32-g++ "${args[@]}"
+          WRAPPER
+          sudo chmod +x /usr/local/bin/x86_64-w64-mingw32-g++-wrap
+
       - name: Build Windows binary
         working-directory: desktop
         run: |
-          CGO_ENABLED=1 GOOS=windows GOARCH=amd64 CC=x86_64-w64-mingw32-gcc \
+          CGO_ENABLED=1 GOOS=windows GOARCH=amd64 \
+            CC=x86_64-w64-mingw32-gcc \
+            CXX=/usr/local/bin/x86_64-w64-mingw32-g++-wrap \
             go build -ldflags="-s -w -H windowsgui" -o build/buttonbox-config-windows-amd64.exe .
 
       - name: Create GitHub Release
