@@ -65,6 +65,7 @@ func main() {
 		w.Write([]byte(indexHTML))
 	})
 	mux.HandleFunc("/discover", handleDiscover)
+	mux.HandleFunc("/status", handleStatus)
 	mux.HandleFunc("/config", handleConfig)
 	mux.HandleFunc("/ota", handleOTA)
 
@@ -79,6 +80,33 @@ func main() {
 }
 
 // ── HTTP handlers ─────────────────────────────────────────────────────────────
+
+func handleStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	c := getConn()
+	if c == nil {
+		json.NewEncoder(w).Encode(map[string]any{"connected": false})
+		return
+	}
+	// Ping the BLE link: a failed read means the device is gone.
+	type pingResult struct{ ok bool }
+	ch := make(chan pingResult, 1)
+	go func() {
+		buf := make([]byte, 32)
+		_, err := c.readChar.Read(buf)
+		ch <- pingResult{err == nil}
+	}()
+	select {
+	case res := <-ch:
+		if !res.ok {
+			setConn(nil)
+		}
+		json.NewEncoder(w).Encode(map[string]any{"connected": res.ok})
+	case <-time.After(3 * time.Second):
+		setConn(nil)
+		json.NewEncoder(w).Encode(map[string]any{"connected": false})
+	}
+}
 
 func handleDiscover(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")

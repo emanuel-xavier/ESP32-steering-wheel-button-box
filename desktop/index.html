@@ -122,6 +122,11 @@
     </div>
     <div id="manualStatus" style="margin-top:.6rem;font-size:.82rem;display:none"></div>
   </div>
+
+  <div id="stateReconnecting" class="discover-row hidden">
+    <span class="spinner"></span>
+    <span>Connection lost. Waiting for device&hellip;</span>
+  </div>
 </div>
 
 <!-- ── Config section (hidden until device is found) ─────────────────────── -->
@@ -294,20 +299,84 @@
                   'encoderTaskDelayMs','encoderZoneSteps','encoderZoneCount',
                   'useMatrix','matrixRows','matrixCols'];
 
+  // ── Connection state ────────────────────────────────────────────────────────
+
+  let _pollTimer      = null;
+  let _reconnectTimer = null;
+
+  function startPoll() {
+    stopPoll();
+    _pollTimer = setInterval(async () => {
+      try {
+        const res  = await fetch('/status');
+        const data = await res.json();
+        if (!data.connected) handleDisconnect();
+      } catch (_) {}
+    }, 4000);
+  }
+
+  function stopPoll() {
+    if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+  }
+
+  function stopReconnect() {
+    if (_reconnectTimer) { clearTimeout(_reconnectTimer); _reconnectTimer = null; }
+  }
+
+  function handleDisconnect() {
+    stopPoll();
+    stopReconnect();
+    hide('configSection');
+    hide('stateFound');
+    hide('stateSearching');
+    hide('stateNotFound');
+    show('stateReconnecting');
+    document.getElementById('btnSave').disabled = true;
+    document.getElementById('btnOta').disabled  = true;
+    scheduleReconnect();
+  }
+
+  function scheduleReconnect() {
+    _reconnectTimer = setTimeout(async () => {
+      try {
+        const res  = await fetch('/discover');
+        const data = await res.json();
+        if (data.found) {
+          onConnected();
+        } else {
+          scheduleReconnect(); // keep retrying silently
+        }
+      } catch (_) {
+        scheduleReconnect();
+      }
+    }, 5000);
+  }
+
+  function onConnected() {
+    stopReconnect();
+    document.getElementById('foundBadge').textContent = 'ButtonBox';
+    hide('stateSearching'); hide('stateReconnecting'); hide('stateNotFound');
+    show('stateFound');
+    show('configSection');
+    document.getElementById('btnSave').disabled = false;
+    document.getElementById('btnOta').disabled  = false;
+    loadConfig();
+    startPoll();
+  }
+
   // ── Discovery ──────────────────────────────────────────────────────────────
 
   async function startDiscover() {
-    show('stateSearching'); hide('stateFound'); hide('stateNotFound');
+    stopPoll();
+    stopReconnect();
+    hide('stateFound'); hide('stateNotFound'); hide('stateReconnecting');
+    show('stateSearching');
     try {
-      const res = await fetch('/discover');
+      const res  = await fetch('/discover');
       const data = await res.json();
       if (data.found) {
-        document.getElementById('foundBadge').textContent = 'ButtonBox';
-        hide('stateSearching'); show('stateFound');
-        show('configSection');
-        document.getElementById('btnSave').disabled = false;
-        document.getElementById('btnOta').disabled = false;
-        loadConfig();
+        hide('stateSearching');
+        onConnected();
       } else {
         hide('stateSearching'); show('stateNotFound');
       }
@@ -486,6 +555,7 @@
     try {
       setStatus('Loading…', 'info');
       const res = await fetch('/config');
+      if (res.status === 503) { handleDisconnect(); return; }
       populateForm(await res.json());
       setStatus('Config loaded.', 'ok');
     } catch (e) { setStatus('Failed to load: ' + e.message, 'error'); }
@@ -502,13 +572,11 @@
         body: JSON.stringify(readForm())
       });
       if (res.ok) {
-        setStatus('Saved! Device is rebooting.', 'ok');
-        // device disconnects after reboot — show re-scan after 5 s
-        setTimeout(() => {
-          hide('configSection');
-          hide('stateFound');
-          startDiscover();
-        }, 5000);
+        setStatus('Saved! Device is rebooting…', 'ok');
+        // handleDisconnect hides config and retries every 5 s automatically
+        handleDisconnect();
+      } else if (res.status === 503) {
+        handleDisconnect();
       } else {
         throw new Error('HTTP ' + res.status);
       }
