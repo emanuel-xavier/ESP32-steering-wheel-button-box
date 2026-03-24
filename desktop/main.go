@@ -158,19 +158,14 @@ func scanAndConnect() (*bleConn, error) {
 		if found {
 			return
 		}
-		name := result.LocalName()
-		if name != "ButtonBox-Config" {
-			for _, u := range result.ServiceUUIDs() {
-				if u == serviceUUID {
-					goto accept
-				}
+		for _, u := range result.ServiceUUIDs() {
+			if u == serviceUUID {
+				found = true
+				foundAddr = result.Address
+				adapter.StopScan()
+				return
 			}
-			return
 		}
-	accept:
-		found = true
-		foundAddr = result.Address
-		adapter.StopScan()
 	})
 	if err != nil {
 		return nil, err
@@ -219,6 +214,6 @@ type bleError string
 func (e bleError) Error() string { return string(e) }
 
 const (
-	errNotFound        bleError = "ButtonBox-Config not found — make sure the device is in config mode"
+	errNotFound        bleError = "ButtonBox not found — make sure the device is powered on and Bluetooth is enabled"
 	errServiceNotFound bleError = "ButtonBox service not found on device"
 )

@@ -5,8 +5,7 @@
 
 struct Config {
   String   bleDeviceName          = "ESP32-steering-wheel";
-  uint8_t  numButtons             = 14;    // Number of physical buttons (1–32)
-  uint32_t configBootButton       = 6;     // Button number (1–numButtons) held at boot to enter BLE config mode
+  uint8_t  numButtons             = 14;    // Number of physical buttons (0–32)
   String   otaPassword            = "";    // ArduinoOTA password (empty = no password)
   bool     useEncoders            = true;
   uint32_t debounceDelayMs        = 5;     // Bounce2 button debounce (ms)
@@ -40,7 +39,6 @@ inline Config loadConfig() {
   if (!prefs.begin("buttonbox", true)) return cfg;  // returns defaults if no NVS entry
   cfg.bleDeviceName          = prefs.getString("bleName",      cfg.bleDeviceName);
   cfg.numButtons             = prefs.getUChar("numButtons",   cfg.numButtons);
-  cfg.configBootButton       = prefs.getUInt("cfgBootBtn",    cfg.configBootButton);
   cfg.otaPassword            = prefs.getString("otaPassword", cfg.otaPassword);
   cfg.useEncoders            = prefs.getBool("useEncoders",    cfg.useEncoders);
   cfg.debounceDelayMs        = prefs.getUInt("debounceMs",     cfg.debounceDelayMs);
@@ -69,7 +67,6 @@ inline void saveConfig(const Config& cfg) {
   prefs.begin("buttonbox", false);
   prefs.putString("bleName",      cfg.bleDeviceName);
   prefs.putUChar("numButtons",   cfg.numButtons);
-  prefs.putUInt("cfgBootBtn",    cfg.configBootButton);
   prefs.putString("otaPassword", cfg.otaPassword);
   prefs.putBool("useEncoders",    cfg.useEncoders);
   prefs.putUInt("debounceMs",     cfg.debounceDelayMs);
@@ -96,7 +93,6 @@ inline String configToJson(const Config& cfg) {
   StaticJsonDocument<1280> doc;
   doc["bleDeviceName"]          = cfg.bleDeviceName;
   doc["numButtons"]             = cfg.numButtons;
-  doc["configBootButton"]       = cfg.configBootButton;
   doc["otaPassword"]            = cfg.otaPassword;
   doc["useEncoders"]            = cfg.useEncoders;
   doc["debounceDelayMs"]        = cfg.debounceDelayMs;
@@ -135,8 +131,7 @@ inline bool jsonToConfig(const String& json, Config& cfg) {
   StaticJsonDocument<1280> doc;
   if (deserializeJson(doc, json)) return false;
   if (doc.containsKey("bleDeviceName"))          cfg.bleDeviceName          = doc["bleDeviceName"].as<String>();
-  if (doc.containsKey("numButtons"))             cfg.numButtons             = constrain(doc["numButtons"].as<int>(), 1, 32);
-  if (doc.containsKey("configBootButton"))       cfg.configBootButton       = doc["configBootButton"].as<uint32_t>();
+  if (doc.containsKey("numButtons"))             cfg.numButtons             = constrain(doc["numButtons"].as<int>(), 0, 32);
   if (doc.containsKey("otaPassword"))            cfg.otaPassword            = doc["otaPassword"].as<String>();
   if (doc.containsKey("useEncoders"))            cfg.useEncoders            = doc["useEncoders"].as<bool>();
   if (doc.containsKey("debounceDelayMs"))        cfg.debounceDelayMs        = doc["debounceDelayMs"].as<uint32_t>();

@@ -1,13 +1,7 @@
 #define SERIAL_DEBUG
 
-// ── Boot behaviour ─────────────────────────────────────────────────────────
-// Hold button on pin CONFIG_BOOT_PIN (pin 2, i.e. the first button) while
-// powering on to enter WiFi config mode. The device creates a WiFi AP named
-// "ButtonBox-Config". Connect to that network and open http://192.168.4.1
-// in any browser to read or update the persisted configuration.
-// The device reboots automatically after saving.
-//
-// Normal boot (pin 2 not held): loads config from NVS and starts the gamepad.
+// The BLE config service runs alongside the gamepad at all times.
+// Open the desktop app, click Scan, and configure without any special boot mode.
 //
 // Required extra library: ArduinoJson >= 6.x  (Arduino Library Manager)
 
@@ -223,47 +217,11 @@ void setup() {
   #endif
 
   cfg = loadConfig();
-
-  // Config mode: hold the configured button while powering on (skipped when numButtons=0;
-  // use 3 rapid reboots to enter config mode in that case)
-  if (cfg.numButtons > 0) {
-    uint32_t bootBtnIdx = constrain(cfg.configBootButton, 1u, (uint32_t)cfg.numButtons) - 1;
-    byte cfgPin = cfg.buttonPins[bootBtnIdx];
-    pinMode(cfgPin, INPUT_PULLUP);
-    delay(100); // let pin settle after power-on
-    if (digitalRead(cfgPin) == LOW) {
-      startConfigMode(); // never returns
-    }
-  }
-
-  // Crash-counter fallback: after 3 rapid reboots without a clean startup,
-  // enter config mode automatically so the device is still recoverable.
-  {
-    Preferences bp;
-    bp.begin("bootcnt", false);
-    uint32_t cnt = bp.getUInt("cnt", 0) + 1;
-    bp.putUInt("cnt", cnt);
-    bp.end();
-    delay(1000); // wait 1 s — a crash during this window keeps the counter high
-    #ifdef SERIAL_DEBUG
-      Serial.printf("[Boot] Boot counter: %u/3\n", cnt);
-    #endif
-    if (cnt >= 3) {
-      #ifdef SERIAL_DEBUG
-        Serial.println("[Boot] 3 rapid reboots detected — entering config mode");
-      #endif
-      Preferences bpReset;
-      bpReset.begin("bootcnt", false);
-      bpReset.putUInt("cnt", 0);
-      bpReset.end();
-      startConfigMode(); // never returns
-    }
-  }
-
   setupButtons();
   if (cfg.useMatrix)   setupMatrix();
   if (cfg.useEncoders) setupEncoders();
   setupBleGamepad();
+  attachConfigService(NimBLEDevice::getServer());
 
   for (byte i = 0; i < MAX_BUTTONS + MAX_ENC_BUTTONS; i++)
     physicalButtons[i] = i + 1;
@@ -274,14 +232,6 @@ void setup() {
       xTaskCreate(encoderZonesTask, "EncZonesTask", 4096, NULL, 1, NULL);
     else
       xTaskCreate(encoderTask, "EncoderTask", 4096, NULL, 1, NULL);
-  }
-
-  // Startup succeeded — clear crash counter
-  {
-    Preferences bp;
-    bp.begin("bootcnt", false);
-    bp.putUInt("cnt", 0);
-    bp.end();
   }
 }
 

@@ -1,12 +1,10 @@
 #pragma once
-// BLE GATT Configuration Mode
-// Hold the config boot button while powering on to enter this mode.
-// The ESP32 advertises as "ButtonBox-Config"; connect with the desktop app.
-//
-// No extra libraries needed — NimBLE-Arduino is already required by the gamepad.
+// Always-on BLE configuration service.
+// Attached to the same NimBLE server as the gamepad — no special boot mode needed.
+// Connect with the desktop app at any time to read or update configuration.
 //
 // Service UUID : bb010000-feed-dead-beef-cafebabe0001
-//   config_read  (READ)  : bb010001-feed-dead-beef-cafebabe0001  → current config JSON
+//   config_read  (READ)  : bb010001-feed-dead-beef-cafebabe0001  → current config JSON (always fresh)
 //   config_write (WRITE) : bb010002-feed-dead-beef-cafebabe0001  → new config JSON, saved to NVS
 //   reboot       (WRITE) : bb010003-feed-dead-beef-cafebabe0001  → any write triggers esp_restart()
 //   ota_trigger  (WRITE) : bb010004-feed-dead-beef-cafebabe0001  → any write enters OTA WiFi mode
@@ -20,6 +18,13 @@
 #define BB_CFG_WRITE_UUID    "bb010002-feed-dead-beef-cafebabe0001"
 #define BB_CFG_REBOOT_UUID   "bb010003-feed-dead-beef-cafebabe0001"
 #define BB_OTA_TRIGGER_UUID  "bb010004-feed-dead-beef-cafebabe0001"
+
+class _BbReadCallbacks : public NimBLECharacteristicCallbacks {
+  // Always serve fresh config from NVS so the desktop app sees current state.
+  void onRead(NimBLECharacteristic* pChar, NimBLEConnInfo&) override {
+    pChar->setValue(configToJson(loadConfig()).c_str());
+  }
+};
 
 class _BbWriteCallbacks : public NimBLECharacteristicCallbacks {
   void onWrite(NimBLECharacteristic* pChar, NimBLEConnInfo&) override {
@@ -59,51 +64,40 @@ class _BbOtaCallbacks : public NimBLECharacteristicCallbacks {
   }
 };
 
-inline void startConfigMode() {
-  #ifdef SERIAL_DEBUG
-    Serial.begin(115200);
-    Serial.println("[BLE Config] Starting — advertising as 'ButtonBox-Config'");
-  #endif
+// Attach the config GATT service to an existing NimBLE server (shared with the gamepad).
+// Call this after BleGamepad::begin() so the server and NimBLE stack already exist.
+inline void attachConfigService(NimBLEServer* pServer) {
+  // Allow large ATT MTU so the full config JSON fits in a single read response.
+  NimBLEDevice::setMTU(512);
 
-  NimBLEDevice::init("ButtonBox-Config");
-  NimBLEDevice::setMTU(512);  // negotiate up to 512 bytes — config JSON fits in one write
-
-  NimBLEServer*  pServer  = NimBLEDevice::createServer();
   NimBLEService* pService = pServer->createService(BB_SERVICE_UUID);
 
-  // Read: returns current config as JSON
   NimBLECharacteristic* pRead = pService->createCharacteristic(
     BB_CFG_READ_UUID, NIMBLE_PROPERTY::READ);
-  pRead->setValue(configToJson(loadConfig()).c_str());
+  pRead->setCallbacks(new _BbReadCallbacks());
 
-  // Write: accepts new config JSON, saves to NVS
-  // WRITE_NR (no-response) is included so BlueZ on Linux can use ATT Write Command
-  // after MTU negotiation — the config JSON (~350 bytes) fits in one PDU at MTU=512.
   NimBLECharacteristic* pWrite = pService->createCharacteristic(
     BB_CFG_WRITE_UUID, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
   pWrite->setCallbacks(new _BbWriteCallbacks());
 
-  // Reboot: any write triggers esp_restart()
   NimBLECharacteristic* pReboot = pService->createCharacteristic(
     BB_CFG_REBOOT_UUID, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
   pReboot->setCallbacks(new _BbRebootCallbacks());
 
-  // OTA trigger: any write stops BLE and starts WiFi ArduinoOTA soft-AP
   NimBLECharacteristic* pOta = pService->createCharacteristic(
     BB_OTA_TRIGGER_UUID, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
   pOta->setCallbacks(new _BbOtaCallbacks());
 
   pService->start();
 
+  // Include our service UUID in BLE advertisements so the desktop app can
+  // discover the device by UUID without requiring a specific device name.
   NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
+  pAdv->stop();
   pAdv->addServiceUUID(BB_SERVICE_UUID);
   pAdv->start();
 
   #ifdef SERIAL_DEBUG
-    Serial.println("[BLE Config] Ready. Open the desktop app to configure.");
+    Serial.println("[BLE Config] Config service ready — desktop app can connect at any time.");
   #endif
-
-  while (true) {
-    vTaskDelay(100 / portTICK_PERIOD_MS);
-  }
 }

@@ -105,7 +105,7 @@
 
   <div id="stateSearching" class="discover-row">
     <span class="spinner"></span>
-    <span>Scanning for ButtonBox-Config via Bluetooth&hellip;</span>
+    <span>Scanning for ButtonBox via Bluetooth&hellip;</span>
   </div>
 
   <div id="stateFound" class="discover-row hidden">
@@ -115,7 +115,7 @@
 
   <div id="stateNotFound" class="hidden">
     <p style="color:var(--muted);font-size:.88rem;margin-bottom:.9rem">
-      Device not found. Make sure the ESP32 is in config mode (hold the config button at power-on) and that Bluetooth is enabled on this machine.
+      Device not found. Make sure the ESP32 is powered on and that Bluetooth is enabled on this machine.
     </p>
     <div style="margin-top:.7rem">
       <button class="btn btn-ghost btn-sm" onclick="startDiscover()">Retry scan</button>
@@ -132,13 +132,6 @@
   <div class="field">
     <label><span>Bluetooth Name</span><small>Name shown when pairing</small></label>
     <input type="text" id="bleDeviceName" maxlength="32" value="ESP32-steering-wheel" style="width:190px"/>
-  </div>
-  <div id="cfgBootField" class="field" style="flex-direction:column;align-items:flex-start;gap:.5rem">
-    <label>
-      <span>Config Mode Button</span>
-      <small>Hold this button while powering on to enter Bluetooth config mode.</small>
-    </label>
-    <div id="cfgBootPicker" style="display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.2rem"></div>
   </div>
 </div>
 
@@ -309,7 +302,7 @@
       const res = await fetch('/discover');
       const data = await res.json();
       if (data.found) {
-        document.getElementById('foundBadge').textContent = 'ButtonBox-Config';
+        document.getElementById('foundBadge').textContent = 'ButtonBox';
         hide('stateSearching'); show('stateFound');
         show('configSection');
         document.getElementById('btnSave').disabled = false;
@@ -336,45 +329,6 @@
   function onEncoderToggle() {
     const on = document.getElementById('useEncoders').checked;
     document.getElementById('encoderOptions').classList.toggle('hidden', !on);
-  }
-
-  function buildCfgBootPicker(count) {
-    count = (count != null) ? count : Number(document.getElementById('numButtons').value);
-    count = Math.max(0, Math.min(32, count));
-    const picker = document.getElementById('cfgBootPicker');
-    // Preserve current selection
-    const current = getCfgBootBtn();
-    picker.innerHTML = '';
-    for (let i = 1; i <= count; i++) {
-      const chip = document.createElement('div');
-      chip.id = 'cfgBootBtn' + i;
-      chip.textContent = i;
-      chip.style.cssText = 'width:34px;height:34px;display:flex;align-items:center;justify-content:center;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--muted);cursor:pointer;font-size:.85rem;font-weight:600;transition:all .15s;user-select:none';
-      chip.onclick = () => setCfgBootBtn(i);
-      picker.appendChild(chip);
-    }
-    setCfgBootBtn(Math.min(current, count));
-  }
-
-  function setCfgBootBtn(n) {
-    const count = Number(document.getElementById('numButtons')?.value) || 32;
-    for (let i = 1; i <= count; i++) {
-      const chip = document.getElementById('cfgBootBtn' + i);
-      if (!chip) continue;
-      const active = i === n;
-      chip.style.borderColor = active ? 'var(--accent)' : 'var(--border)';
-      chip.style.color       = active ? 'var(--accent)' : 'var(--muted)';
-      chip.style.background  = active ? '#1e2d4a'       : 'var(--bg)';
-      chip.dataset.active    = active;
-    }
-  }
-
-  function getCfgBootBtn() {
-    for (let i = 1; i <= 32; i++) {
-      const chip = document.getElementById('cfgBootBtn' + i);
-      if (chip && chip.dataset.active === 'true') return i;
-    }
-    return 1;  // fallback; ignored by firmware when numButtons=0
   }
 
   function buildResetPicker() {
@@ -465,10 +419,8 @@
     const n = useDirectBtns ? rawN : 14;  // keep a sensible default in the hidden input
     if (useDirectBtns) document.getElementById('numButtons').value = n;
     buildBtnPinGrid(useDirectBtns ? n : 0);
-    buildCfgBootPicker(useDirectBtns ? n : 0);
     updateZoneCountOptions();
     if (cfg.encoderZoneCount       !== undefined) document.getElementById('encoderZoneCount').value = cfg.encoderZoneCount;
-    if (cfg.configBootButton       !== undefined) setCfgBootBtn(cfg.configBootButton);
     if (cfg.encoderZonesMode       !== undefined) setMode(cfg.encoderZonesMode);
     if (cfg.encoderZoneMaster      !== undefined) setMaster(cfg.encoderZoneMaster);
     if (cfg.encoderZoneResetButtons !== undefined) setResetButtons(cfg.encoderZoneResetButtons);
@@ -508,7 +460,6 @@
       if (!el) continue;
       cfg[k] = el.type === 'checkbox' ? el.checked : el.type === 'text' ? el.value : Number(el.value);
     }
-    cfg.configBootButton        = getCfgBootBtn();
     cfg.encoderZonesMode        = document.getElementById('encoderZonesMode').value === 'true';
     cfg.encoderZoneMaster       = Number(document.getElementById('encoderZoneMaster').value);
     cfg.encoderZoneResetButtons = getResetButtons();
@@ -572,7 +523,6 @@
   function onDirectBtnsToggle() {
     const on = document.getElementById('useDirectButtons').checked;
     document.getElementById('directBtnOptions').classList.toggle('hidden', !on);
-    document.getElementById('cfgBootField').classList.toggle('hidden', !on);
   }
 
   function onMatrixToggle() {
@@ -664,12 +614,10 @@
   function onNumButtonsChange() {
     const n = Math.max(0, Math.min(32, Number(document.getElementById('numButtons').value)));
     buildBtnPinGrid(n);
-    buildCfgBootPicker(n);
   }
 
   // ── Init ───────────────────────────────────────────────────────────────────
   buildBtnPinGrid(14);
-  buildCfgBootPicker(14);
   buildMatrixPinGrid('matRowPinGrid', 4, 'R');
   buildMatrixPinGrid('matColPinGrid', 4, 'C');
   buildResetPicker();
