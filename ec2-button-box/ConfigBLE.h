@@ -64,10 +64,11 @@ class _BbOtaCallbacks : public NimBLECharacteristicCallbacks {
   }
 };
 
-// Attach the config GATT service to an existing NimBLE server (shared with the gamepad).
-// Call this after BleGamepad::begin() so the server and NimBLE stack already exist.
-inline void attachConfigService(NimBLEServer* pServer) {
-  // Allow large ATT MTU so the full config JSON fits in a single read response.
+// Register the config GATT service on the NimBLE server.
+// MUST be called BEFORE BleGamepad::begin() so all services are finalized
+// together when the NimBLE host syncs. Calling pService->start() after the
+// GATT table is frozen causes a NimBLE mutex assert crash.
+inline void registerConfigService(NimBLEServer* pServer) {
   NimBLEDevice::setMTU(512);
 
   NimBLEService* pService = pServer->createService(BB_SERVICE_UUID);
@@ -90,14 +91,11 @@ inline void attachConfigService(NimBLEServer* pServer) {
 
   pService->start();
 
-  // Include our service UUID in BLE advertisements so the desktop app can
-  // discover the device by UUID without requiring a specific device name.
-  NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
-  pAdv->stop();
-  pAdv->addServiceUUID(BB_SERVICE_UUID);
-  pAdv->start();
+  // Queue the UUID for advertisements — BleGamepad::begin() will call
+  // pAdvertising->start() later, picking this up automatically.
+  NimBLEDevice::getAdvertising()->addServiceUUID(BB_SERVICE_UUID);
 
   #ifdef SERIAL_DEBUG
-    Serial.println("[BLE Config] Config service ready — desktop app can connect at any time.");
+    Serial.println("[BLE Config] Config service registered.");
   #endif
 }

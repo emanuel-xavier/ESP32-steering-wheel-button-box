@@ -220,8 +220,13 @@ void setup() {
   setupButtons();
   if (cfg.useMatrix)   setupMatrix();
   if (cfg.useEncoders) setupEncoders();
-  setupBleGamepad();
-  attachConfigService(NimBLEDevice::getServer());
+
+  // Init NimBLE and register the config service BEFORE setupBleGamepad().
+  // All services must be created before BleGamepad::begin() finalises the GATT table.
+  NimBLEDevice::init(cfg.bleDeviceName.c_str());
+  registerConfigService(NimBLEDevice::createServer());
+
+  setupBleGamepad(); // adds HID service to the same server, then starts advertising
 
   for (byte i = 0; i < MAX_BUTTONS + MAX_ENC_BUTTONS; i++)
     physicalButtons[i] = i + 1;
