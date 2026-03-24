@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>ButtonBox Config</title>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#0f1117;--surface:#1a1d27;--border:#2e3347;
+      --accent:#4f8ef7;--accent2:#3a6fd4;--danger:#e05555;
+      --success:#4caf7d;--text:#e2e6f0;--muted:#7b829a;--r:8px;
+    }
+    body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;
+         min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:2rem 1rem}
+    header{text-align:center;margin-bottom:2rem}
+    header h1{font-size:1.6rem;font-weight:700}
+    header p{color:var(--muted);margin-top:.3rem;font-size:.9rem}
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
+          padding:1.5rem;width:100%;max-width:480px}
+    .card+.card{margin-top:1rem}
+    .card h2{font-size:.85rem;font-weight:600;color:var(--muted);text-transform:uppercase;
+             letter-spacing:.8px;margin-bottom:1.1rem}
+    .field{display:flex;align-items:center;justify-content:space-between;
+           padding:.55rem 0;border-bottom:1px solid var(--border)}
+    .field:last-child{border-bottom:none}
+    .field label{display:flex;flex-direction:column;gap:2px}
+    .field label span{font-size:.95rem}
+    .field label small{color:var(--muted);font-size:.75rem}
+    input[type="number"]{width:90px;background:var(--bg);border:1px solid var(--border);
+      border-radius:6px;color:var(--text);padding:.4rem .55rem;font-size:.95rem;
+      text-align:right;outline:none;transition:border-color .15s}
+    input[type="number"]:focus{border-color:var(--accent)}
+    input[type="text"]{background:var(--bg);border:1px solid var(--border);
+      border-radius:6px;color:var(--text);padding:.4rem .55rem;font-size:.88rem;outline:none;
+      transition:border-color .15s}
+    input[type="text"]:focus{border-color:var(--accent)}
+    .toggle{position:relative;width:46px;height:26px}
+    .toggle input{opacity:0;width:0;height:0}
+    .slider{position:absolute;inset:0;background:var(--border);border-radius:26px;
+            cursor:pointer;transition:background .2s}
+    .slider::before{content:'';position:absolute;width:20px;height:20px;left:3px;top:3px;
+                    background:#fff;border-radius:50%;transition:transform .2s}
+    .toggle input:checked+.slider{background:var(--accent)}
+    .toggle input:checked+.slider::before{transform:translateX(20px)}
+    .btn{display:inline-flex;align-items:center;gap:.4rem;padding:.6rem 1.2rem;
+         border-radius:var(--r);font-size:.9rem;font-weight:600;cursor:pointer;border:none;
+         transition:opacity .15s,background .15s}
+    .btn:disabled{opacity:.45;cursor:not-allowed}
+    .btn-primary{background:var(--accent);color:#fff}
+    .btn-primary:not(:disabled):hover{background:var(--accent2)}
+    .btn-ghost{background:transparent;border:1px solid var(--border);color:var(--text)}
+    .btn-ghost:not(:disabled):hover{border-color:var(--accent);color:var(--accent)}
+    .btn-sm{padding:.4rem .85rem;font-size:.82rem}
+    .actions{display:flex;gap:.75rem;margin-top:1.25rem;flex-wrap:wrap}
+    #status{margin-top:.9rem;padding:.6rem .9rem;border-radius:var(--r);
+            font-size:.88rem;display:none}
+    #status.info{background:#1e2d4a;color:var(--accent);display:block}
+    #status.ok{background:#1a3028;color:var(--success);display:block}
+    #status.error{background:#3a1a1a;color:var(--danger);display:block}
+    footer{margin-top:2.5rem;color:var(--muted);font-size:.78rem;text-align:center}
+    .mode-select{display:flex;gap:.4rem}
+    .mode-btn{flex:1;padding:.4rem;border-radius:6px;border:1px solid var(--border);
+              background:var(--bg);color:var(--muted);font-size:.85rem;cursor:pointer;
+              text-align:center;transition:all .15s}
+    .mode-btn.active{border-color:var(--accent);color:var(--accent);background:#1e2d4a}
+    .hidden{display:none!important}
+
+    /* Discovery */
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .spinner{width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);
+             border-radius:50%;animation:spin .7s linear infinite;display:inline-block;
+             vertical-align:middle;margin-right:.5rem}
+    .discover-row{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap}
+    .badge-ok{display:inline-flex;align-items:center;gap:.4rem;padding:.25rem .65rem;
+              border-radius:20px;background:#1a3028;color:var(--success);font-size:.82rem;font-weight:600}
+    .badge-ok::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--success);display:inline-block}
+  </style>
+</head>
+<body>
+<header>
+  <h1>ButtonBox Config</h1>
+  <p>ESP32 Steering Wheel &mdash; Bluetooth Configuration</p>
+</header>
+
+<!-- ── Discovery card ─────────────────────────────────────────────────────── -->
+<div class="card" id="discoverCard">
+  <h2>Connection</h2>
+
+  <div id="stateSearching" class="discover-row">
+    <span class="spinner"></span>
+    <span>Scanning for ButtonBox-Config via Bluetooth&hellip;</span>
+  </div>
+
+  <div id="stateFound" class="discover-row hidden">
+    <span class="badge-ok" id="foundBadge">buttonbox.local</span>
+    <button class="btn btn-ghost btn-sm" onclick="startDiscover()">Re-scan</button>
+  </div>
+
+  <div id="stateNotFound" class="hidden">
+    <p style="color:var(--muted);font-size:.88rem;margin-bottom:.9rem">
+      Device not found. Make sure the ESP32 is in config mode (hold the config button at power-on) and that Bluetooth is enabled on this machine.
+    </p>
+    <div style="margin-top:.7rem">
+      <button class="btn btn-ghost btn-sm" onclick="startDiscover()">Retry scan</button>
+    </div>
+    <div id="manualStatus" style="margin-top:.6rem;font-size:.82rem;display:none"></div>
+  </div>
+</div>
+
+<!-- ── Config section (hidden until device is found) ─────────────────────── -->
+<div id="configSection" class="hidden">
+
+<div class="card">
+  <h2>Device</h2>
+  <div class="field">
+    <label><span>Bluetooth Name</span><small>Name shown when pairing</small></label>
+    <input type="text" id="bleDeviceName" maxlength="32" value="ESP32-steering-wheel" style="width:190px"/>
+  </div>
+  <div class="field" style="flex-direction:column;align-items:flex-start;gap:.5rem">
+    <label>
+      <span>Config Mode Button</span>
+      <small>Hold this button while powering on to enter Wi-Fi config mode.</small>
+    </label>
+    <div id="cfgBootPicker" style="display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.2rem"></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Buttons</h2>
+  <div class="field">
+    <label><span>Button Debounce</span><small>Bounce2 interval (ms)</small></label>
+    <input type="number" id="debounceDelayMs" min="0" max="100" value="5"/>
+  </div>
+  <div class="field">
+    <label><span>Button Task Interval</span><small>Button polling delay (ms)</small></label>
+    <input type="number" id="buttonTaskDelayMs" min="1" max="500" value="5"/>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Encoders</h2>
+  <div class="field">
+    <label><span>Use Encoders</span><small>Enable / disable rotary encoders</small></label>
+    <label class="toggle"><input type="checkbox" id="useEncoders" onchange="onEncoderToggle()"/><span class="slider"></span></label>
+  </div>
+
+  <div id="encoderOptions">
+    <div class="field">
+      <label><span>Encoder Mode</span><small>Select how encoders behave</small></label>
+      <div class="mode-select">
+        <div class="mode-btn active" id="modeNormal" onclick="setMode(false)">Normal</div>
+        <div class="mode-btn"        id="modeZones"  onclick="setMode(true)">Zones</div>
+      </div>
+    </div>
+    <input type="hidden" id="encoderZonesMode" value="false"/>
+
+    <div id="zonesFields">
+      <div class="field">
+        <label><span>Master Encoder</span><small>Selector encoder that sets the active zone</small></label>
+        <div class="mode-select">
+          <div class="mode-btn active" id="masterEnc0" onclick="setMaster(0)">Encoder 1</div>
+          <div class="mode-btn"        id="masterEnc1" onclick="setMaster(1)">Encoder 2</div>
+        </div>
+      </div>
+      <input type="hidden" id="encoderZoneMaster" value="0"/>
+      <div class="field">
+        <label><span>Zone Steps</span><small>Total steps of the master encoder</small></label>
+        <input type="number" id="encoderZoneSteps" min="2" max="200" value="20" onchange="updateZoneCountOptions()"/>
+      </div>
+      <div class="field">
+        <label><span>Zone Count</span><small>Only divisors of Zone Steps are valid</small></label>
+        <select id="encoderZoneCount" style="width:90px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:.4rem .55rem;font-size:.95rem;outline:none"></select>
+      </div>
+      <div class="field" style="flex-direction:column;align-items:flex-start;gap:.5rem">
+        <label>
+          <span>Reset Combo</span>
+          <small>Hold all selected buttons simultaneously to reset zone position to 0. Leave empty to disable.</small>
+        </label>
+        <div id="resetBtnPicker" style="display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.2rem"></div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label><span>Encoder Debounce</span><small>Hardware encoder filter (&micro;s)</small></label>
+      <input type="number" id="encoderDebounceUs" min="0" max="50000" value="1000"/>
+    </div>
+    <div class="field">
+      <label><span>Encoder Press Duration</span><small>Simulated key-press length (ms)</small></label>
+      <input type="number" id="encoderPressDurationMs" min="10" max="1000" value="100"/>
+    </div>
+    <div class="field">
+      <label><span>Encoder Task Interval</span><small>Encoder polling delay (ms)</small></label>
+      <input type="number" id="encoderTaskDelayMs" min="1" max="500" value="5"/>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" id="btnSave" onclick="saveConfig()">Save &amp; Reboot</button>
+    <button class="btn btn-ghost"   onclick="loadConfig()">Refresh</button>
+  </div>
+  <div id="status"></div>
+</div>
+
+</div> <!-- #configSection -->
+
+<footer>ButtonBox Desktop &nbsp;&bull;&nbsp; Config via Bluetooth</footer>
+
+<script>
+  const FIELDS = ['bleDeviceName','useEncoders','debounceDelayMs','encoderDebounceUs',
+                  'buttonTaskDelayMs','encoderPressDurationMs','encoderTaskDelayMs',
+                  'encoderZoneSteps','encoderZoneCount'];
+
+  // ── Discovery ──────────────────────────────────────────────────────────────
+
+  async function startDiscover() {
+    show('stateSearching'); hide('stateFound'); hide('stateNotFound');
+    try {
+      const res = await fetch('/discover');
+      const data = await res.json();
+      if (data.found) {
+        document.getElementById('foundBadge').textContent = 'ButtonBox-Config';
+        hide('stateSearching'); show('stateFound');
+        show('configSection');
+        document.getElementById('btnSave').disabled = false;
+        loadConfig();
+      } else {
+        hide('stateSearching'); show('stateNotFound');
+      }
+    } catch (e) {
+      hide('stateSearching'); show('stateNotFound');
+    }
+  }
+
+  function show(id) { document.getElementById(id).classList.remove('hidden'); }
+  function hide(id) { document.getElementById(id).classList.add('hidden'); }
+
+  // ── Config form ────────────────────────────────────────────────────────────
+
+  function setStatus(msg, type) {
+    const el = document.getElementById('status');
+    el.className = type; el.textContent = msg;
+  }
+
+  function onEncoderToggle() {
+    const on = document.getElementById('useEncoders').checked;
+    document.getElementById('encoderOptions').classList.toggle('hidden', !on);
+  }
+
+  function buildCfgBootPicker() {
+    const picker = document.getElementById('cfgBootPicker');
+    picker.innerHTML = '';
+    for (let i = 1; i <= 14; i++) {
+      const chip = document.createElement('div');
+      chip.id = 'cfgBootBtn' + i;
+      chip.textContent = i;
+      chip.style.cssText = 'width:34px;height:34px;display:flex;align-items:center;justify-content:center;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--muted);cursor:pointer;font-size:.85rem;font-weight:600;transition:all .15s;user-select:none';
+      chip.onclick = () => setCfgBootBtn(i);
+      picker.appendChild(chip);
+    }
+    setCfgBootBtn(6);
+  }
+
+  function setCfgBootBtn(n) {
+    for (let i = 1; i <= 14; i++) {
+      const chip = document.getElementById('cfgBootBtn' + i);
+      if (!chip) continue;
+      const active = i === n;
+      chip.style.borderColor = active ? 'var(--accent)' : 'var(--border)';
+      chip.style.color       = active ? 'var(--accent)' : 'var(--muted)';
+      chip.style.background  = active ? '#1e2d4a'       : 'var(--bg)';
+      chip.dataset.active    = active;
+    }
+  }
+
+  function getCfgBootBtn() {
+    for (let i = 1; i <= 14; i++) {
+      const chip = document.getElementById('cfgBootBtn' + i);
+      if (chip && chip.dataset.active === 'true') return i;
+    }
+    return 6;
+  }
+
+  function buildResetPicker() {
+    const picker = document.getElementById('resetBtnPicker');
+    picker.innerHTML = '';
+    for (let i = 1; i <= 14; i++) {
+      const chip = document.createElement('div');
+      chip.id = 'resetBtn' + i;
+      chip.textContent = i;
+      chip.dataset.active = 'false';
+      chip.style.cssText = 'width:34px;height:34px;display:flex;align-items:center;justify-content:center;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--muted);cursor:pointer;font-size:.85rem;font-weight:600;transition:all .15s;user-select:none';
+      chip.onclick = () => toggleResetBtn(i);
+      picker.appendChild(chip);
+    }
+  }
+
+  function toggleResetBtn(n) {
+    const chip = document.getElementById('resetBtn' + n);
+    const active = chip.dataset.active !== 'true';
+    chip.dataset.active = active;
+    chip.style.borderColor = active ? 'var(--accent)' : 'var(--border)';
+    chip.style.color       = active ? 'var(--accent)' : 'var(--muted)';
+    chip.style.background  = active ? '#1e2d4a'       : 'var(--bg)';
+  }
+
+  function getResetButtons() {
+    const result = [];
+    for (let i = 1; i <= 14; i++) {
+      const chip = document.getElementById('resetBtn' + i);
+      if (chip && chip.dataset.active === 'true') result.push(i);
+    }
+    return result;
+  }
+
+  function setResetButtons(arr) {
+    for (let i = 1; i <= 14; i++) {
+      const chip = document.getElementById('resetBtn' + i);
+      if (!chip) continue;
+      const active = arr.includes(i);
+      chip.dataset.active = active;
+      chip.style.borderColor = active ? 'var(--accent)' : 'var(--border)';
+      chip.style.color       = active ? 'var(--accent)' : 'var(--muted)';
+      chip.style.background  = active ? '#1e2d4a'       : 'var(--bg)';
+    }
+  }
+
+  function updateZoneCountOptions() {
+    const steps = Number(document.getElementById('encoderZoneSteps').value) || 20;
+    const select = document.getElementById('encoderZoneCount');
+    const prev = Number(select.value);
+    select.innerHTML = '';
+    for (let i = 2; i <= steps; i++) {
+      if (steps % i === 0) {
+        const opt = document.createElement('option');
+        opt.value = i; opt.textContent = i;
+        select.appendChild(opt);
+      }
+    }
+    select.value = (steps % prev === 0 && prev >= 2) ? prev : select.options[0].value;
+  }
+
+  function setMaster(idx) {
+    document.getElementById('encoderZoneMaster').value = idx;
+    document.getElementById('masterEnc0').classList.toggle('active', idx === 0);
+    document.getElementById('masterEnc1').classList.toggle('active', idx === 1);
+  }
+
+  function setMode(zones) {
+    document.getElementById('encoderZonesMode').value = zones ? 'true' : 'false';
+    document.getElementById('modeNormal').classList.toggle('active', !zones);
+    document.getElementById('modeZones').classList.toggle('active',  zones);
+    document.getElementById('zonesFields').classList.toggle('hidden', !zones);
+  }
+
+  function populateForm(cfg) {
+    for (const k of FIELDS) {
+      if (k === 'encoderZoneCount') continue;
+      if (cfg[k] === undefined) continue;
+      const el = document.getElementById(k);
+      if (!el) continue;
+      el.type === 'checkbox' ? (el.checked = cfg[k]) : (el.value = cfg[k]);
+    }
+    updateZoneCountOptions();
+    if (cfg.encoderZoneCount       !== undefined) document.getElementById('encoderZoneCount').value = cfg.encoderZoneCount;
+    if (cfg.configBootButton       !== undefined) setCfgBootBtn(cfg.configBootButton);
+    if (cfg.encoderZonesMode       !== undefined) setMode(cfg.encoderZonesMode);
+    if (cfg.encoderZoneMaster      !== undefined) setMaster(cfg.encoderZoneMaster);
+    if (cfg.encoderZoneResetButtons !== undefined) setResetButtons(cfg.encoderZoneResetButtons);
+    onEncoderToggle();
+  }
+
+  function readForm() {
+    const cfg = {};
+    for (const k of FIELDS) {
+      const el = document.getElementById(k);
+      if (!el) continue;
+      cfg[k] = el.type === 'checkbox' ? el.checked : el.type === 'text' ? el.value : Number(el.value);
+    }
+    cfg.configBootButton        = getCfgBootBtn();
+    cfg.encoderZonesMode        = document.getElementById('encoderZonesMode').value === 'true';
+    cfg.encoderZoneMaster       = Number(document.getElementById('encoderZoneMaster').value);
+    cfg.encoderZoneResetButtons = getResetButtons();
+    return cfg;
+  }
+
+  async function loadConfig() {
+    try {
+      setStatus('Loading…', 'info');
+      const res = await fetch('/config');
+      populateForm(await res.json());
+      setStatus('Config loaded.', 'ok');
+    } catch (e) { setStatus('Failed to load: ' + e.message, 'error'); }
+  }
+
+  async function saveConfig() {
+    const btn = document.getElementById('btnSave');
+    btn.disabled = true;
+    try {
+      setStatus('Saving…', 'info');
+      const res = await fetch('/config', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(readForm())
+      });
+      if (res.ok) {
+        setStatus('Saved! Device is rebooting.', 'ok');
+        // device disconnects after reboot — show re-scan after 5 s
+        setTimeout(() => {
+          hide('configSection');
+          hide('stateFound');
+          startDiscover();
+        }, 5000);
+      } else {
+        throw new Error('HTTP ' + res.status);
+      }
+    } catch (e) {
+      btn.disabled = false;
+      setStatus('Save failed: ' + e.message, 'error');
+    }
+  }
+
+  // ── Init ───────────────────────────────────────────────────────────────────
+  buildCfgBootPicker();
+  buildResetPicker();
+  setMode(false);
+  updateZoneCountOptions();
+  startDiscover(); // auto-discover on load
+</script>
+</body>
+</html>

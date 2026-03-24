@@ -17,7 +17,7 @@
 // NimBLE-Arduino    1.4.1
 #include <BleGamepad.h>
 #include "Config.h"
-#include "ConfigWiFi.h"
+#include "ConfigBLE.h"
 #include "Encoder.h"
 
 #define NUM_OF_BUTTONS   14

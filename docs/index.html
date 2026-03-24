@@ -24,13 +24,6 @@
            font-weight:600;border:1px solid var(--border);color:var(--muted)}
     .badge.blue{border-color:#4f8ef755;color:var(--accent);background:#4f8ef710}
 
-    /* note box */
-    .note{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--accent);
-          border-radius:var(--r);padding:1rem 1.2rem;width:100%;max-width:560px;margin-top:1rem;font-size:.85rem}
-    .note strong{display:block;margin-bottom:.35rem;font-size:.88rem}
-    .note ul{margin:.3rem 0 0 1.1rem;color:var(--muted);display:flex;flex-direction:column;gap:.2rem}
-    .note a{color:var(--accent)}
-
     /* cards */
     .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
           padding:1.5rem;width:100%;max-width:560px}
@@ -75,13 +68,13 @@
 
 <header>
   <h1>ESP32 Button Box</h1>
-  <p>BLE gamepad for a steering wheel button box — configurable at runtime via Wi-Fi, no reflashing needed.</p>
+  <p>BLE gamepad for a steering wheel button box — configurable at runtime via Bluetooth, no reflashing needed.</p>
   <div class="badge-row">
     <span class="badge blue">ESP32</span>
     <span class="badge blue">BLE Gamepad</span>
     <span class="badge">14 Buttons</span>
     <span class="badge">2 Encoders</span>
-    <span class="badge">Wi-Fi Config</span>
+    <span class="badge">Bluetooth Config</span>
   </div>
 </header>
 
@@ -92,28 +85,28 @@
       <div class="num">1</div>
       <div class="step-body">
         <strong>Enter config mode</strong>
-        <span>Hold <strong>Button 1</strong> (pin 2) while powering on the device.</span>
+        <span>Hold the config button (default: <strong>Button 6</strong>, pin 17) while powering on. The button is configurable from the app.</span>
       </div>
     </div>
     <div class="step">
       <div class="num">2</div>
       <div class="step-body">
-        <strong>Connect to the Wi-Fi network</strong>
-        <span>Look for <code>ButtonBox-Config</code> in your Wi-Fi list and connect to it.</span>
+        <strong>Open the desktop app</strong>
+        <span>Download from the <a href="https://github.com/emanuel-xavier/ESP32-steering-wheel-button-box/releases" style="color:var(--accent)">Releases page</a> or build from source. The app scans for the device automatically.</span>
       </div>
     </div>
     <div class="step">
       <div class="num">3</div>
       <div class="step-body">
-        <strong>Open the config page</strong>
-        <span>Navigate to <code>http://buttonbox.local</code> or <code>http://192.168.4.1</code> in any browser — the page is served by the ESP32 itself.</span>
+        <strong>Edit and save</strong>
+        <span>The app connects via Bluetooth, loads current settings, and lets you edit them. Press <strong>Save &amp; Reboot</strong> to apply.</span>
       </div>
     </div>
     <div class="step">
       <div class="num">4</div>
       <div class="step-body">
-        <strong>Save &amp; reboot</strong>
-        <span>Edit any setting and press <strong>Save &amp; Reboot</strong>. Settings persist in NVS across power cycles.</span>
+        <strong>Done</strong>
+        <span>Settings persist in NVS across power cycles. The device reboots into gamepad mode automatically.</span>
       </div>
     </div>
   </div>
@@ -136,40 +129,25 @@
     </div>
     <div class="feature">
       <strong>Persistent Config</strong>
-      <span>All settings stored in ESP32 NVS. Survives power loss. Changed via Wi-Fi, no USB needed.</span>
+      <span>All settings stored in ESP32 NVS. Survives power loss. Changed via Bluetooth, no USB needed.</span>
     </div>
     <div class="feature">
       <strong>BLE HID Gamepad</strong>
       <span>Works on Windows, macOS, Linux, Android and iOS as a standard gamepad — no drivers.</span>
     </div>
     <div class="feature">
-      <strong>Serial Debug</strong>
-      <span>Enable <code>#define SERIAL_DEBUG</code> to log all button and encoder events at 115200 baud.</span>
+      <strong>Crash Recovery</strong>
+      <span>3 rapid reboots without a clean startup automatically triggers config mode — always recoverable.</span>
     </div>
   </div>
 </div>
 
-<div class="note">
-  <strong>How <code>buttonbox.local</code> works</strong>
-  The ESP32 advertises itself on the local network using <strong>mDNS</strong> (multicast DNS), so you can
-  reach it by name instead of memorising its IP address.
-  <ul>
-    <li><strong>macOS &amp; Linux</strong> — works out of the box, no setup needed.</li>
-    <li><strong>Windows 10 / 11</strong> — requires the <strong>Bonjour</strong> service.
-        It ships with the <em>Apple Devices</em> app (Microsoft Store) or iTunes.
-        Without it, use the IP address <code>http://192.168.4.1</code> instead.</li>
-    <li><strong>Android / iOS</strong> — most browsers resolve <code>.local</code> natively.</li>
-  </ul>
-</div>
-
 <div class="btn-row">
-  <a class="btn btn-primary" href="http://buttonbox.local" target="_blank">Open Config Page &rarr;</a>
-  <a class="btn btn-ghost"   href="http://192.168.4.1"    target="_blank">Use IP address</a>
+  <a class="btn btn-primary" href="https://github.com/emanuel-xavier/ESP32-steering-wheel-button-box/releases" target="_blank">Download Desktop App &rarr;</a>
   <a class="btn btn-ghost"   href="https://github.com/emanuel-xavier/ESP32-steering-wheel-button-box" target="_blank">View on GitHub</a>
 </div>
 
 <footer>
-  Config page only reachable while connected to the <code>ButtonBox-Config</code> Wi-Fi network. &nbsp;&middot;&nbsp;
   <a href="https://github.com/emanuel-xavier/ESP32-steering-wheel-button-box">github.com/emanuel-xavier/ESP32-steering-wheel-button-box</a>
 </footer>
 

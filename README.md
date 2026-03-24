@@ -1,6 +1,6 @@
 # ESP32 Steering Wheel Button Box
 
-An ESP32-based BLE gamepad for a steering wheel button box. Reads 14 physical buttons and 2 rotary encoders, transmitting inputs over Bluetooth Low Energy as a standard HID gamepad. All settings are configurable at runtime via a built-in WiFi web interface — no reflashing required.
+An ESP32-based BLE gamepad for a steering wheel button box. Reads 14 physical buttons and 2 rotary encoders, transmitting inputs over Bluetooth Low Energy as a standard HID gamepad. All settings are configurable at runtime via Bluetooth — no reflashing, no WiFi, no browser needed.
 
 ---
 
@@ -10,12 +10,12 @@ An ESP32-based BLE gamepad for a steering wheel button box. Reads 14 physical bu
 
 | Button | Pin |
 |--------|-----|
-| 1 *(config boot pin)* | 2 |
+| 1 | 2 |
 | 2 | 13 |
 | 3 | 15 |
 | 4 | 14 |
 | 5 | 16 |
-| 6 | 17 |
+| 6 *(default config boot button)* | 17 |
 | 7 | 18 |
 | 8 | 19 |
 | 9 | 21 |
@@ -79,35 +79,90 @@ One encoder acts as a **master** (zone selector) and the other as a **slave** (a
 
 ## Runtime Configuration
 
-Settings are stored in ESP32 NVS (non-volatile storage) and survive power loss.
+Settings are stored in ESP32 NVS (non-volatile storage) and survive power loss. Configuration is done via Bluetooth using the desktop app — no WiFi, no browser, no network connection needed.
 
 ### Entering config mode
 
-1. **Hold Button 1 (pin 2) while powering on.**
-2. The device creates a WiFi access point named `ButtonBox-Config`.
-3. Connect to that network on any device.
-4. Open `http://192.168.4.1` in any browser.
-5. Edit settings and press **Save & Reboot**.
-6. The device saves to NVS and reboots into gamepad mode.
+1. **Hold the config boot button (default: Button 6, pin 17) while powering on.**
+2. The device advertises itself over Bluetooth as `ButtonBox-Config`.
+3. Open the desktop app — it scans and connects automatically.
+4. Edit settings and press **Save & Reboot**.
+5. The device saves to NVS and reboots into gamepad mode.
+
+> The config boot button can be changed to any of the 14 physical buttons from the app itself.
+
+### Crash-counter fallback
+
+If the device reboots 3 times in a row without completing a successful startup (e.g. due to a bad config causing a crash), it automatically enters config mode so the device is always recoverable without holding any button.
 
 ### Available settings
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| Use Encoders | `true` | Enable / disable rotary encoders |
+| Bluetooth Name | `ESP32-steering-wheel` | Name shown when pairing via BLE |
+| Config Boot Button | `6` | Button number held at boot to enter config mode |
 | Button Debounce | `5 ms` | Bounce2 debounce interval |
 | Button Task Interval | `5 ms` | Button polling rate |
+| Use Encoders | `true` | Enable / disable rotary encoders |
+| Encoder Mode | Normal | Normal or Zones |
+| Master Encoder | `0` | Zones mode: which encoder selects the zone |
+| Zone Steps | `20` | Total steps of the master encoder |
+| Zone Count | `2` | Number of equal zones (must divide Zone Steps) |
+| Zone Reset Combo | *(none)* | Buttons held simultaneously to reset zone position to 0 |
 | Encoder Debounce | `1000 µs` | Hardware encoder filter |
 | Encoder Press Duration | `100 ms` | Simulated key-press length |
 | Encoder Task Interval | `5 ms` | Encoder polling rate |
-| Encoder Mode | Normal | Normal or Zones |
-| Master Encoder | 0 | Zones mode: which encoder selects the zone |
-| Zone Steps | `20` | Total steps of the master encoder |
-| Zone Count | `2` | Number of equal zones (must divide Zone Steps) |
 
 ---
 
-## Dependencies
+## Desktop App
+
+A standalone desktop app that connects to the ESP32 over Bluetooth to read and write configuration. Download the latest release from the [Releases page](https://github.com/emanuel-xavier/ESP32-steering-wheel-button-box/releases) or build from source.
+
+### How it works
+
+1. Put the ESP32 into config mode (hold the config button at power-on)
+2. Open the app — it scans for `ButtonBox-Config` via Bluetooth automatically
+3. Config is read from the device and shown in the UI
+4. Edit settings and press **Save & Reboot**
+
+### Build requirements
+
+| Platform | Requirement |
+|----------|-------------|
+| Linux | `webkit2gtk` — `sudo pacman -S webkit2gtk` (Arch) / `sudo apt install libwebkit2gtk-4.0-dev libgtk-3-dev` |
+| Linux (Bluetooth) | BlueZ must be running. User must have permission: `sudo usermod -aG bluetooth $USER` |
+| Windows (cross-compile from Linux) | `mingw-w64` — `sudo pacman -S mingw-w64-gcc` (Arch) / `sudo apt install gcc-mingw-w64` |
+| Windows (native build) | Go + gcc via [MSYS2](https://www.msys2.org/) |
+| macOS | Xcode Command Line Tools — `xcode-select --install` |
+
+### Build
+
+```bash
+cd desktop
+
+# Linux
+make linux
+
+# Windows executable (cross-compiled from Linux)
+make windows
+
+# Both
+make
+```
+
+Binaries are placed in `desktop/build/`.
+
+### Run without building
+
+```bash
+cd desktop
+go run .
+```
+
+---
+
+## Arduino Dependencies
 
 Install via **Arduino Library Manager**:
 
@@ -118,19 +173,19 @@ Install via **Arduino Library Manager**:
 | [NimBLE-Arduino](https://github.com/h2zero/NimBLE-Arduino) | 1.4.1 |
 | [ArduinoJson](https://arduinojson.org) | ≥ 6.x |
 
-Built-in ESP32 Arduino core libraries used: `Preferences`, `WiFi`, `WebServer`.
+Built-in ESP32 Arduino core libraries used: `Preferences`.
 
 ---
 
 ## Debug Output
 
-Uncomment the first line of `ec2-button-box.ino` to enable serial logging at 115200 baud:
+Uncomment (or keep) the first line of `ec2-button-box.ino` to enable serial logging at 115200 baud:
 
 ```cpp
 #define SERIAL_DEBUG
 ```
 
-Logs include: button press/release, encoder direction and button number, master encoder position and active zone, and WiFi config mode startup messages.
+Logs include: button press/release, encoder direction and button number, master encoder position and active zone, boot counter, and BLE config mode startup messages.
 
 ---
 
@@ -140,8 +195,17 @@ Logs include: button press/release, encoder direction and button number, master 
 ├── ec2-button-box/
 │   ├── ec2-button-box.ino   # Entry point, tasks, pin assignments
 │   ├── Config.h             # Config struct, NVS load/save, JSON helpers
-│   ├── Encoder.h            # Rotary encoder class (Enc namespace)
-│   └── ConfigWiFi.h         # WiFi AP, HTTP server, embedded config page
+│   ├── ConfigBLE.h          # BLE GATT config server (NimBLE)
+│   └── Encoder.h            # Rotary encoder class (Enc namespace)
+├── desktop/
+│   ├── main.go              # BLE client + local HTTP server + webview window
+│   ├── index.html           # Config UI served by the desktop app
+│   ├── Makefile             # Linux and Windows build targets
+│   ├── go.mod
+│   └── go.sum
+├── .github/
+│   └── workflows/
+│       └── release.yml      # Builds and publishes desktop binaries on tag push
 └── docs/
-    └── index.html           # GitHub Pages setup guide
+    └── index.html           # GitHub Pages project page
 ```
