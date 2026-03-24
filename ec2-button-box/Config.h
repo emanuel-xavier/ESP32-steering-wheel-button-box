@@ -5,7 +5,8 @@
 
 struct Config {
   String   bleDeviceName          = "ESP32-steering-wheel";
-  uint32_t configBootButton       = 6;     // Button number (1-14) held at boot to enter BLE config mode
+  uint8_t  numButtons             = 14;    // Number of physical buttons (1–32)
+  uint32_t configBootButton       = 6;     // Button number (1–numButtons) held at boot to enter BLE config mode
   String   otaPassword            = "";    // ArduinoOTA password (empty = no password)
   bool     useEncoders            = true;
   uint32_t debounceDelayMs        = 5;     // Bounce2 button debounce (ms)
@@ -23,7 +24,7 @@ struct Config {
   // to reset the master encoder position to 0. 0 = feature disabled.
   uint32_t encoderZoneResetMask   = 0;
   // Pin assignments — GPIO numbers for each button and encoder channel
-  uint8_t  buttonPins[14]    = {2, 13, 15, 14, 16, 17, 18, 19, 21, 22, 23, 25, 32, 33};
+  uint8_t  buttonPins[32]    = {2, 13, 15, 14, 16, 17, 18, 19, 21, 22, 23, 25, 32, 33};
   uint8_t  encoderPins[2][2] = {{26, 27}, {4, 5}};  // [enc][clk=0/dt=1]
 };
 
@@ -32,6 +33,7 @@ inline Config loadConfig() {
   Preferences prefs;
   if (!prefs.begin("buttonbox", true)) return cfg;  // returns defaults if no NVS entry
   cfg.bleDeviceName          = prefs.getString("bleName",      cfg.bleDeviceName);
+  cfg.numButtons             = prefs.getUChar("numButtons",   cfg.numButtons);
   cfg.configBootButton       = prefs.getUInt("cfgBootBtn",    cfg.configBootButton);
   cfg.otaPassword            = prefs.getString("otaPassword", cfg.otaPassword);
   cfg.useEncoders            = prefs.getBool("useEncoders",    cfg.useEncoders);
@@ -55,6 +57,7 @@ inline void saveConfig(const Config& cfg) {
   Preferences prefs;
   prefs.begin("buttonbox", false);
   prefs.putString("bleName",      cfg.bleDeviceName);
+  prefs.putUChar("numButtons",   cfg.numButtons);
   prefs.putUInt("cfgBootBtn",    cfg.configBootButton);
   prefs.putString("otaPassword", cfg.otaPassword);
   prefs.putBool("useEncoders",    cfg.useEncoders);
@@ -68,7 +71,7 @@ inline void saveConfig(const Config& cfg) {
   prefs.putUInt("encZoneSteps",   cfg.encoderZoneSteps);
   prefs.putUInt("encZoneCount",   cfg.encoderZoneCount);
   prefs.putUInt("encResetMask",   cfg.encoderZoneResetMask);
-  prefs.putBytes("btnPins",  cfg.buttonPins,  sizeof(cfg.buttonPins));
+  prefs.putBytes("btnPins",  cfg.buttonPins,  32);
   prefs.putBytes("encPins",  cfg.encoderPins, sizeof(cfg.encoderPins));
   prefs.end();
 }
@@ -76,6 +79,7 @@ inline void saveConfig(const Config& cfg) {
 inline String configToJson(const Config& cfg) {
   StaticJsonDocument<1280> doc;
   doc["bleDeviceName"]          = cfg.bleDeviceName;
+  doc["numButtons"]             = cfg.numButtons;
   doc["configBootButton"]       = cfg.configBootButton;
   doc["otaPassword"]            = cfg.otaPassword;
   doc["useEncoders"]            = cfg.useEncoders;
@@ -89,10 +93,10 @@ inline String configToJson(const Config& cfg) {
   doc["encoderZoneSteps"]       = cfg.encoderZoneSteps;
   doc["encoderZoneCount"]       = cfg.encoderZoneCount;
   JsonArray resetArr = doc.createNestedArray("encoderZoneResetButtons");
-  for (int i = 0; i < 14; i++)
+  for (int i = 0; i < (int)cfg.numButtons; i++)
     if (cfg.encoderZoneResetMask & (1u << i)) resetArr.add(i + 1);
   JsonArray bpArr = doc.createNestedArray("buttonPins");
-  for (int i = 0; i < 14; i++) bpArr.add(cfg.buttonPins[i]);
+  for (int i = 0; i < (int)cfg.numButtons; i++) bpArr.add(cfg.buttonPins[i]);
   JsonArray epArr = doc.createNestedArray("encoderPins");
   for (int i = 0; i < 2; i++) {
     JsonArray row = epArr.createNestedArray();
@@ -108,6 +112,7 @@ inline bool jsonToConfig(const String& json, Config& cfg) {
   StaticJsonDocument<1280> doc;
   if (deserializeJson(doc, json)) return false;
   if (doc.containsKey("bleDeviceName"))          cfg.bleDeviceName          = doc["bleDeviceName"].as<String>();
+  if (doc.containsKey("numButtons"))             cfg.numButtons             = constrain(doc["numButtons"].as<int>(), 1, 32);
   if (doc.containsKey("configBootButton"))       cfg.configBootButton       = doc["configBootButton"].as<uint32_t>();
   if (doc.containsKey("otaPassword"))            cfg.otaPassword            = doc["otaPassword"].as<String>();
   if (doc.containsKey("useEncoders"))            cfg.useEncoders            = doc["useEncoders"].as<bool>();
@@ -123,11 +128,11 @@ inline bool jsonToConfig(const String& json, Config& cfg) {
   if (doc.containsKey("encoderZoneResetButtons")) {
     cfg.encoderZoneResetMask = 0;
     for (int btn : doc["encoderZoneResetButtons"].as<JsonArray>())
-      if (btn >= 1 && btn <= 14) cfg.encoderZoneResetMask |= (1u << (btn - 1));
+      if (btn >= 1 && btn <= (int)cfg.numButtons) cfg.encoderZoneResetMask |= (1u << (btn - 1));
   }
   if (doc.containsKey("buttonPins")) {
     JsonArrayConst bp = doc["buttonPins"].as<JsonArrayConst>();
-    for (int i = 0; i < 14 && i < (int)bp.size(); i++)
+    for (int i = 0; i < 32 && i < (int)bp.size(); i++)
       cfg.buttonPins[i] = bp[i].as<uint8_t>();
   }
   if (doc.containsKey("encoderPins")) {

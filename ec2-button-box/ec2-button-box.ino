@@ -20,20 +20,19 @@
 #include "ConfigBLE.h"
 #include "Encoder.h"
 
-#define NUM_OF_BUTTONS   14
+#define MAX_BUTTONS      32  // compile-time allocation limit
 #define NUM_OF_ENCODERS   2
 
 // ── Globals ─────────────────────────────────────────────────────────────────
 static Config cfg;
 
-Bounce       debouncers[NUM_OF_BUTTONS];
+Bounce       debouncers[MAX_BUTTONS];
 BleGamepad*  pBleGamepad = nullptr;
 
 #define MAX_ENC_BUTTONS  16  // supports up to 8 zones
-byte         physicalButtons[NUM_OF_BUTTONS + MAX_ENC_BUTTONS];
+byte         physicalButtons[MAX_BUTTONS + MAX_ENC_BUTTONS];
 
 Enc::Encoder     encoders[NUM_OF_ENCODERS];
-const byte       encoderBtnStart = NUM_OF_BUTTONS;
 volatile uint32_t buttonState    = 0;  // bitmask: bit i set = buttonPins[i] currently pressed
 
 // ── Tasks ───────────────────────────────────────────────────────────────────
@@ -41,7 +40,7 @@ void buttonTask(void*) {
   while (true) {
     if (pBleGamepad->isConnected()) {
       bool dirty = false;
-      for (byte i = 0; i < NUM_OF_BUTTONS; i++) {
+      for (byte i = 0; i < cfg.numButtons; i++) {
         debouncers[i].update();
         if (debouncers[i].fell()) {
           buttonState |= (1u << i);
@@ -75,7 +74,7 @@ void encoderTask(void*) {
         Enc::Move m = encoders[i].read();
         if (m == Enc::none) continue;
 
-        byte idx = encoderBtnStart + i * 2 + (m == Enc::ccw ? 1 : 0);
+        byte idx = cfg.numButtons + i * 2 + (m == Enc::ccw ? 1 : 0);
         #ifdef SERIAL_DEBUG
           Serial.printf("Encoder %d %s -> button %d (clk pin %d)\n",
             i, (m == Enc::ccw) ? "CCW" : "CW", physicalButtons[idx], cfg.encoderPins[i][0]);
@@ -93,7 +92,7 @@ void encoderTask(void*) {
 
 // Zones mode: encoder 1 tracks absolute position and determines the active zone.
 // Encoder 2 triggers zone-specific buttons instead of fixed CW/CCW buttons.
-// Button layout: physicalButtons[encoderBtnStart + zone*2 + (ccw?1:0)]
+// Button layout: physicalButtons[cfg.numButtons + zone*2 + (ccw?1:0)]
 void encoderZonesTask(void*) {
   int  position    = 0;
   bool resetActive = false;  // prevents repeated resets while combo is held
@@ -129,7 +128,7 @@ void encoderZonesTask(void*) {
 
       Enc::Move m2 = encoders[slave].read();
       if (m2 != Enc::none) {
-        byte idx = encoderBtnStart + zone * 2 + (m2 == Enc::ccw ? 1 : 0);
+        byte idx = cfg.numButtons + zone * 2 + (m2 == Enc::ccw ? 1 : 0);
         #ifdef SERIAL_DEBUG
           Serial.printf("Zone %d | Enc%d %s -> btn %d (clk pin %d)\n",
             zone, slave, (m2 == Enc::ccw) ? "CCW" : "CW", physicalButtons[idx], cfg.encoderPins[slave][0]);
@@ -147,7 +146,7 @@ void encoderZonesTask(void*) {
 
 // ── Setup helpers ────────────────────────────────────────────────────────────
 void setupButtons() {
-  for (byte i = 0; i < NUM_OF_BUTTONS; i++) {
+  for (byte i = 0; i < cfg.numButtons; i++) {
     pinMode(cfg.buttonPins[i], INPUT_PULLUP);
     debouncers[i].attach(cfg.buttonPins[i]);
     debouncers[i].interval(cfg.debounceDelayMs);
@@ -167,7 +166,7 @@ void setupBleGamepad() {
     encButtons = cfg.encoderZonesMode ? (int)cfg.encoderZoneCount * 2 : NUM_OF_ENCODERS * 2;
   pBleGamepad = new BleGamepad(cfg.bleDeviceName.c_str(), "emanuelxavier.dev");
   BleGamepadConfiguration gcfg;
-  gcfg.setButtonCount(NUM_OF_BUTTONS + encButtons);
+  gcfg.setButtonCount(cfg.numButtons + encButtons);
   gcfg.setAutoReport(false);
   pBleGamepad->begin(&gcfg);
 }
@@ -181,7 +180,7 @@ void setup() {
   cfg = loadConfig();
 
   // Config mode: hold the configured button while powering on (default: button 6, pin 17)
-  uint32_t bootBtnIdx = constrain(cfg.configBootButton, 1u, (uint32_t)NUM_OF_BUTTONS) - 1;
+  uint32_t bootBtnIdx = constrain(cfg.configBootButton, 1u, (uint32_t)cfg.numButtons) - 1;
   byte cfgPin = cfg.buttonPins[bootBtnIdx];
   pinMode(cfgPin, INPUT_PULLUP);
   delay(100); // let pin settle after power-on
@@ -217,7 +216,7 @@ void setup() {
   if (cfg.useEncoders) setupEncoders();
   setupBleGamepad();
 
-  for (byte i = 0; i < NUM_OF_BUTTONS + MAX_ENC_BUTTONS; i++)
+  for (byte i = 0; i < MAX_BUTTONS + MAX_ENC_BUTTONS; i++)
     physicalButtons[i] = i + 1;
 
   xTaskCreate(buttonTask, "ButtonTask", 4096, NULL, 1, NULL);
