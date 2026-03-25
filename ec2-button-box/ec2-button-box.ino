@@ -107,10 +107,6 @@ void buttonTask(void*) {
         }
       }
     }
-    #ifdef SERIAL_DEBUG
-      else { Serial.println("BLE not connected"); }
-      delayMicroseconds(1000);
-    #endif
     vTaskDelay(cfg.buttonTaskDelayMs / portTICK_PERIOD_MS);
   }
 }
@@ -281,6 +277,13 @@ void setup() {
       cfg = loadConfig();
     }
   }
+  #ifdef SERIAL_DEBUG
+    Serial.print("[Boot] numButtons="); Serial.println(cfg.numButtons);
+    Serial.print("[Boot] useEncoders="); Serial.println(cfg.useEncoders);
+    Serial.print("[Boot] useMatrix="); Serial.println(cfg.useMatrix);
+    Serial.print("[Boot] bleDeviceName="); Serial.println(cfg.bleDeviceName);
+    Serial.print("[Boot] recoveryOccurred="); Serial.println(cfg.recoveryOccurred);
+  #endif
   setupButtons();
   if (cfg.useMatrix)   setupMatrix();
   if (cfg.useEncoders) setupEncoders();

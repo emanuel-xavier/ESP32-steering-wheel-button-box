@@ -162,7 +162,7 @@
   <div id="directBtnOptions">
     <div class="field">
       <label><span>Number of Buttons</span><small>How many physical buttons are wired (1–32)</small></label>
-      <input type="number" id="numButtons" min="1" max="32" value="14" onchange="onNumButtonsChange()"/>
+      <input type="number" id="numButtons" min="1" max="32" value="14" oninput="onNumButtonsChange()"/>
     </div>
     <div class="field" style="flex-direction:column;align-items:flex-start;gap:.4rem">
       <label><span>Button Pins</span><small>GPIO number for each button</small></label>
@@ -304,6 +304,14 @@
     </div>
     <div id="otaStatus" style="margin-top:.9rem;padding:.6rem .9rem;border-radius:var(--r);font-size:.88rem;display:none"></div>
   </div>
+  <div class="card" style="margin-top:.5rem">
+    <h2>Local Cache</h2>
+    <div class="field">
+      <label><span>Clear cached config</span><small>Removes the locally stored config file — next connect shows device defaults</small></label>
+      <button class="btn btn-ghost btn-sm" onclick="clearCache()">Clear Cache</button>
+    </div>
+    <div id="cacheStatus" style="margin-top:.6rem;padding:.5rem .8rem;border-radius:var(--r);font-size:.85rem;display:none"></div>
+  </div>
 </details>
 
 <div class="card hidden" id="debugCard">
@@ -326,6 +334,18 @@
 <footer>ButtonBox Desktop &nbsp;&bull;&nbsp; Config via Bluetooth</footer>
 
 <script>
+  function dbg(label, obj) {
+    const panel = document.getElementById('debugLog');
+    if (!panel) return;
+    const ts  = new Date().toTimeString().slice(0, 8);
+    const row = document.createElement('div');
+    row.style.cssText = 'padding:.2rem .3rem;border-radius:3px;background:#1a1d27;border-left:2px solid var(--accent);margin-bottom:.1rem';
+    row.innerHTML = `<span style="color:var(--muted)">${ts}</span> <strong style="color:var(--accent)">${label}</strong><pre style="margin:0;white-space:pre-wrap;word-break:break-all;color:var(--text);font-size:.78rem">${JSON.stringify(obj, null, 2)}</pre>`;
+    panel.appendChild(row);
+    while (panel.children.length > 30) panel.removeChild(panel.firstChild);
+    panel.scrollTop = panel.scrollHeight;
+  }
+
   const FIELDS = ['bleDeviceName','otaPassword','useEncoders','debounceDelayMs',
                   'encoderDebounceUs','buttonTaskDelayMs','encoderPressDurationMs',
                   'encoderTaskDelayMs','encoderZoneSteps','encoderZoneCount',
@@ -559,6 +579,12 @@
 
   function readForm() {
     const cfg = {};
+    // numButtons first — firmware's jsonToConfig reads JSON in order; putting it early
+    // ensures it's never silently dropped if the ArduinoJson pool fills up late.
+    const btnCount = document.getElementById('useDirectButtons').checked
+      ? Math.max(1, Number(document.getElementById('numButtons').value))
+      : 0;
+    cfg.numButtons = btnCount;
     for (const k of FIELDS) {
       const el = document.getElementById(k);
       if (!el) continue;
@@ -567,10 +593,6 @@
     cfg.encoderZonesMode        = document.getElementById('encoderZonesMode').value === 'true';
     cfg.encoderZoneMaster       = Number(document.getElementById('encoderZoneMaster').value);
     cfg.encoderZoneResetButtons = getResetButtons();
-    const btnCount = document.getElementById('useDirectButtons').checked
-      ? Math.max(1, Number(document.getElementById('numButtons').value))
-      : 0;
-    cfg.numButtons = btnCount;
     cfg.buttonPins = Array.from({length: btnCount}, (_, i) =>
       Number(document.getElementById('btnPin' + (i + 1))?.value ?? DEFAULT_BTN_PINS[i] ?? 0));
     cfg.encoderPins = [
@@ -591,7 +613,22 @@
       setStatus('Loading…', 'info');
       const res = await fetch('/config');
       if (res.status === 503) { handleDisconnect(); return; }
-      populateForm(await res.json());
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        dbg('READ ERROR from device', err);
+        // Empty read = characteristic not populated yet; populate form with
+        // defaults so the UI is usable and the user can still save.
+        if ((err.error || '').includes('empty')) {
+          populateForm({});
+          setStatus('Could not read config — showing defaults. You can still save.', 'info');
+        } else {
+          setStatus('Read failed: ' + (err.error || res.status), 'error');
+        }
+        return;
+      }
+      const cfg = await res.json();
+      dbg('RECEIVED from device', cfg);
+      populateForm(cfg);
       setStatus('Config loaded.', 'ok');
     } catch (e) { setStatus('Failed to load: ' + e.message, 'error'); }
   }
@@ -601,10 +638,12 @@
     btn.disabled = true;
     try {
       setStatus('Saving…', 'info');
+      const payload = readForm();
+      dbg('SENDING to device', payload);
       const res = await fetch('/config', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(readForm())
+        body: JSON.stringify(payload)
       });
       if (res.ok) {
         setStatus('Saved! Device is rebooting…', 'ok');
@@ -693,6 +732,25 @@
     } catch (e) {
       btn.disabled = false;
       setOtaStatus('Failed: ' + e.message, 'error');
+    }
+  }
+
+  async function clearCache() {
+    const el = document.getElementById('cacheStatus');
+    el.style.display = 'block';
+    el.style.background = '#1e2d4a'; el.style.color = 'var(--accent)';
+    el.textContent = 'Clearing…';
+    try {
+      const res = await fetch('/clearcache', { method: 'POST' });
+      if (res.ok) {
+        el.style.background = '#1a3028'; el.style.color = 'var(--success)';
+        el.textContent = 'Cache cleared. Next connect will show device defaults.';
+      } else {
+        throw new Error('HTTP ' + res.status);
+      }
+    } catch (e) {
+      el.style.background = '#3a1a1a'; el.style.color = 'var(--danger)';
+      el.textContent = 'Failed: ' + e.message;
     }
   }
 

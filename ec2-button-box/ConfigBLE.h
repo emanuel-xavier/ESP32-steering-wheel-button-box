@@ -25,6 +25,42 @@
 static NimBLECharacteristic* _pBtnNotify = nullptr;
 static NimBLECharacteristic* _pCfgRead   = nullptr;
 
+// Pre-serialised JSON cache — populated at boot and after each successful save.
+// Pushed to the client as a NOTIFY when they connect (avoids ATT READ issues with BlueZ).
+static String _cfgJsonCache;
+
+// Send _cfgJsonCache as chunked notifications on _pCfgRead.
+// Uses the same 0x01/0x02/0x03 framing as chunked writes so the Go side can reassemble.
+// Safe to call from any FreeRTOS task (not from an ISR).
+static void _sendConfigNotify() {
+  if (_pCfgRead == nullptr || _cfgJsonCache.length() == 0) return;
+  const char* data  = _cfgJsonCache.c_str();
+  size_t       total = _cfgJsonCache.length();
+  const size_t kChunk = 180;
+  static uint8_t pkt[181];  // BSS — avoids stack pressure inside the task
+  for (size_t offset = 0; offset < total; ) {
+    size_t end = offset + kChunk;
+    if (end > total) end = total;
+    uint8_t cmd = (offset == 0 && end == total) ? 0x03
+                : (offset == 0)                 ? 0x01
+                : (end   == total)              ? 0x03
+                                                : 0x02;
+    pkt[0] = cmd;
+    memcpy(pkt + 1, data + offset, end - offset);
+    _pCfgRead->notify(pkt, 1 + (end - offset));
+    offset = end;
+    if (cmd != 0x03) vTaskDelay(20 / portTICK_PERIOD_MS);
+  }
+}
+
+// One-shot FreeRTOS task: waits for the client to subscribe to the CCCD, then pushes config.
+static void _cfgNotifyTask(void* pvMs) {
+  uint32_t delayMs = (uint32_t)(uintptr_t)pvMs;
+  vTaskDelay(delayMs / portTICK_PERIOD_MS);
+  _sendConfigNotify();
+  vTaskDelete(nullptr);
+}
+
 // Call from any task when a button is pressed or released.
 // btnNumber is the 1-based gamepad button number (same as physicalButtons[i]).
 inline void notifyButtonEvent(uint8_t btnNumber, bool press) {
@@ -33,9 +69,26 @@ inline void notifyButtonEvent(uint8_t btnNumber, bool press) {
   _pBtnNotify->notify(buf, sizeof(buf));
 }
 
-// No onRead callback — value is pre-populated at boot and refreshed after each save.
-// Calling loadConfig() inside the NimBLE host task's onRead overflows its stack
-// (Preferences NVS work is too heavy), causing ATT error 0x0e and killing advertising.
+// Characteristic callbacks for _pCfgRead.
+// onRead: serves the cached JSON for clients that do an ATT READ.
+// onSubscribe: fires when the Go client writes to the CCCD — we send the config
+//   as a NOTIFY at this point, which is guaranteed to arrive (unlike onConnect
+//   which BleGamepad::begin() overwrites with its own server callbacks).
+class _BbReadCallbacks : public NimBLECharacteristicCallbacks {
+  void onRead(NimBLECharacteristic* pChar, NimBLEConnInfo&) override {
+    pChar->setValue((uint8_t*)_cfgJsonCache.c_str(), _cfgJsonCache.length());
+    #ifdef SERIAL_DEBUG
+      Serial.printf("[BLE Config] onRead: serving %u bytes\n", _cfgJsonCache.length());
+    #endif
+  }
+  void onSubscribe(NimBLECharacteristic*, NimBLEConnInfo&, uint16_t subValue) override {
+    if (subValue == 0) return;  // client unsubscribed
+    #ifdef SERIAL_DEBUG
+      Serial.println("[BLE Config] CCCD subscribed — scheduling config notify (200ms).");
+    #endif
+    xTaskCreate(_cfgNotifyTask, "CfgNotify", 4096, (void*)200UL, 1, nullptr);
+  }
+};
 
 // Chunked-write reassembly buffer (shared across calls within one transaction).
 static String _writeBuf;
@@ -57,17 +110,25 @@ class _BbWriteCallbacks : public NimBLECharacteristicCallbacks {
       _writeBuf += chunk;
     } else if (cmd == 0x03) {
       _writeBuf += chunk;
+      #ifdef SERIAL_DEBUG
+        Serial.print("[BLE Config] Received JSON ("); Serial.print(_writeBuf.length()); Serial.println(" bytes):");
+        Serial.println(_writeBuf);
+      #endif
       Config cfg = loadConfig();
       if (jsonToConfig(_writeBuf, cfg)) {
         cfg.recoveryOccurred = false;  // user saved successfully — clear the recovery flag
         saveConfig(cfg);
-        if (_pCfgRead) _pCfgRead->setValue(configToJson(cfg).c_str());
+        _cfgJsonCache = configToJson(cfg);
         #ifdef SERIAL_DEBUG
-          Serial.println("[BLE Config] Config saved to NVS.");
+          Serial.println("[BLE Config] Saved. Key values:");
+          Serial.print("  numButtons="); Serial.println(cfg.numButtons);
+          Serial.print("  useEncoders="); Serial.println(cfg.useEncoders);
+          Serial.print("  useMatrix="); Serial.println(cfg.useMatrix);
+          Serial.print("  bleDeviceName="); Serial.println(cfg.bleDeviceName);
         #endif
       } else {
         #ifdef SERIAL_DEBUG
-          Serial.println("[BLE Config] Received invalid JSON — ignored.");
+          Serial.println("[BLE Config] jsonToConfig failed — invalid or oversized JSON.");
         #endif
       }
       _writeBuf = "";
@@ -104,10 +165,8 @@ inline void registerConfigService(NimBLEServer* pServer, const Config& bootCfg) 
   NimBLEService* pService = pServer->createService(BB_SERVICE_UUID);
 
   _pCfgRead = pService->createCharacteristic(
-    BB_CFG_READ_UUID, NIMBLE_PROPERTY::READ);
-  // Value pre-populated here; no onRead callback (see note above).
-  // After a save, onWrite refreshes _pCfgRead so the next read is current.
-  _pCfgRead->setValue(configToJson(bootCfg).c_str());
+    BB_CFG_READ_UUID, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
+  _pCfgRead->setCallbacks(new _BbReadCallbacks());
 
   NimBLECharacteristic* pWrite = pService->createCharacteristic(
     BB_CFG_WRITE_UUID, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
@@ -125,6 +184,13 @@ inline void registerConfigService(NimBLEServer* pServer, const Config& bootCfg) 
     BB_BTN_NOTIFY_UUID, NIMBLE_PROPERTY::NOTIFY);
 
   pService->start();
+
+  // Populate the JSON cache after start() so the onRead callback has data.
+  _cfgJsonCache = configToJson(bootCfg);
+  #ifdef SERIAL_DEBUG
+    Serial.printf("[BLE Config] JSON cache len=%u first32='%.32s'\n",
+                  _cfgJsonCache.length(), _cfgJsonCache.c_str());
+  #endif
 
   NimBLEDevice::getAdvertising()->addServiceUUID(BB_SERVICE_UUID);
 

@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -27,13 +30,13 @@ func mustUUID(s string) bluetooth.UUID {
 }
 
 var (
-	serviceUUID = mustUUID("bb010000-feed-dead-beef-cafebabe0001")
-	readUUID    = mustUUID("bb010001-feed-dead-beef-cafebabe0001")
-	writeUUID   = mustUUID("bb010002-feed-dead-beef-cafebabe0001")
-	rebootUUID  = mustUUID("bb010003-feed-dead-beef-cafebabe0001")
-	otaUUID     = mustUUID("bb010004-feed-dead-beef-cafebabe0001")
+	serviceUUID   = mustUUID("bb010000-feed-dead-beef-cafebabe0001")
+	readUUID      = mustUUID("bb010001-feed-dead-beef-cafebabe0001")
+	writeUUID     = mustUUID("bb010002-feed-dead-beef-cafebabe0001")
+	rebootUUID    = mustUUID("bb010003-feed-dead-beef-cafebabe0001")
+	otaUUID       = mustUUID("bb010004-feed-dead-beef-cafebabe0001")
 	btnNotifyUUID = mustUUID("bb010005-feed-dead-beef-cafebabe0001")
-	adapter     = bluetooth.DefaultAdapter
+	adapter       = bluetooth.DefaultAdapter
 )
 
 // ── Debug event broker (SSE) ──────────────────────────────────────────────────
@@ -79,6 +82,11 @@ type bleConn struct {
 	rebootChar    bluetooth.DeviceCharacteristic
 	otaChar       bluetooth.DeviceCharacteristic
 	btnNotifyChar bluetooth.DeviceCharacteristic
+	// Config JSON received via NOTIFY from the device (chunked, same framing as writes).
+	// The device pushes it 1 second after the client connects.
+	cfgChan chan string // delivers complete JSON after all chunks arrive
+	cfgMu   sync.Mutex
+	cfgJSON string // cached — returned on repeated GET /config calls
 }
 
 var (
@@ -105,6 +113,7 @@ func main() {
 	mux.HandleFunc("/status", handleStatus)
 	mux.HandleFunc("/config", handleConfig)
 	mux.HandleFunc("/ota", handleOTA)
+	mux.HandleFunc("/clearcache", handleClearCache)
 	mux.HandleFunc("/debug/events", handleDebugEvents)
 
 	go http.ListenAndServe("127.0.0.1:18080", mux)
@@ -115,6 +124,17 @@ func main() {
 	w.SetSize(540, 900, webview.HintNone)
 	w.Navigate("http://127.0.0.1:18080")
 	w.Run()
+}
+
+// ── Local config file ─────────────────────────────────────────────────────────
+
+// configFilePath returns ~/.config/buttonbox/config.json — the local cache
+// written on every successful save so the next session has something to show.
+func configFilePath() string {
+	home, _ := os.UserHomeDir()
+	dir := filepath.Join(home, ".config", "buttonbox")
+	os.MkdirAll(dir, 0755)
+	return filepath.Join(dir, "config.json")
 }
 
 // ── HTTP handlers ─────────────────────────────────────────────────────────────
@@ -148,19 +168,42 @@ func handleConfig(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		buf := make([]byte, 2048)
-		n, err := c.readChar.Read(buf)
-		if err != nil {
-			w.WriteHeader(http.StatusBadGateway)
-			json.NewEncoder(w).Encode(map[string]any{"error": err.Error()})
+		// Fast path: config received via BLE NOTIFY since last connect.
+		c.cfgMu.Lock()
+		cached := c.cfgJSON
+		c.cfgMu.Unlock()
+		if cached != "" {
+			fmt.Printf("[config] returning BLE-notified config (%d bytes)\n", len(cached))
+			w.Write([]byte(cached))
 			return
 		}
-		if n == 0 {
-			w.WriteHeader(http.StatusBadGateway)
-			json.NewEncoder(w).Encode(map[string]any{"error": "empty read from device"})
+		// Wait briefly in case the notification is still in flight (~1s delay on device).
+		select {
+		case j := <-c.cfgChan:
+			fmt.Printf("[config] received via BLE notification (%d bytes)\n", len(j))
+			w.Write([]byte(j))
+			return
+		case <-time.After(2 * time.Second):
+		}
+		// Verify the BLE link is still alive before returning cached data.
+		// Read returns (0, nil) when connected, (0, err) when the device is gone.
+		buf := make([]byte, 4)
+		if _, err := c.readChar.Read(buf); err != nil {
+			fmt.Printf("[config] BLE link gone (%v) — disconnecting\n", err)
+			setConn(nil)
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte(`{"error":"not connected"}`))
 			return
 		}
-		w.Write(buf[:n])
+		// Fallback: local file written on the last successful save.
+		if data, err := os.ReadFile(configFilePath()); err == nil && len(data) > 0 {
+			fmt.Printf("[config] using locally cached config (%d bytes)\n", len(data))
+			w.Write(data)
+			return
+		}
+		// No cached data at all — return empty object so the UI shows defaults.
+		fmt.Println("[config] no cached config found — returning defaults")
+		w.Write([]byte("{}"))
 
 	case http.MethodPost:
 		body, err := io.ReadAll(r.Body)
@@ -176,8 +219,25 @@ func handleConfig(w http.ResponseWriter, r *http.Request) {
 		// Trigger reboot — device disconnects immediately after
 		c.rebootChar.WriteWithoutResponse([]byte{1})
 		setConn(nil)
+		// Cache locally so the next GET returns the saved config without BLE read.
+		if err := os.WriteFile(configFilePath(), body, 0644); err != nil {
+			fmt.Printf("[config] warning: could not write local cache: %v\n", err)
+		} else {
+			fmt.Printf("[config] saved local cache (%d bytes)\n", len(body))
+		}
 		json.NewEncoder(w).Encode(map[string]any{"ok": true})
 	}
+}
+
+func handleClearCache(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if err := os.Remove(configFilePath()); err != nil && !os.IsNotExist(err) {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]any{"error": err.Error()})
+		return
+	}
+	fmt.Println("[cache] local config cache cleared")
+	json.NewEncoder(w).Encode(map[string]any{"ok": true})
 }
 
 func handleDebugEvents(w http.ResponseWriter, r *http.Request) {
@@ -301,8 +361,13 @@ func scanAndConnect() (*bleConn, error) {
 		return nil, err
 	}
 
-	c := &bleConn{device: device}
+	c := &bleConn{
+		device:  device,
+		cfgChan: make(chan string, 1),
+	}
+	fmt.Printf("[scan] discovered %d characteristics:\n", len(chars))
 	for _, ch := range chars {
+		fmt.Printf("  uuid=%s\n", ch.UUID().String())
 		switch ch.UUID() {
 		case readUUID:
 			c.readChar = ch
@@ -316,10 +381,11 @@ func scanAndConnect() (*bleConn, error) {
 			c.btnNotifyChar = ch
 		}
 	}
+	fmt.Printf("[scan] readChar assigned: %v\n", c.readChar.UUID().String())
 
 	// Subscribe to button event notifications and forward to the SSE broker.
 	if c.btnNotifyChar.UUID() == btnNotifyUUID {
-		c.btnNotifyChar.EnableNotifications(func(buf []byte) {
+		if err := c.btnNotifyChar.EnableNotifications(func(buf []byte) {
 			if len(buf) < 2 {
 				return
 			}
@@ -331,8 +397,70 @@ func scanAndConnect() (*bleConn, error) {
 			}
 			msg, _ := json.Marshal(map[string]any{"btn": btn, "evt": evt})
 			evtBroker.publish(string(msg))
-		})
+		}); err != nil {
+			fmt.Printf("[btn notify] EnableNotifications failed: %v\n", err)
+		}
 	}
+
+	// Subscribe to config read notifications.
+	// The device pushes the config JSON when the CCCD is written (onSubscribe callback).
+	// Same 0x01/0x02/0x03 chunked framing as writes — reassembled here.
+	var cfgBuf strings.Builder
+	if err := c.readChar.EnableNotifications(func(buf []byte) {
+		if len(buf) < 1 {
+			return
+		}
+		cmd := buf[0]
+		chunk := string(buf[1:])
+		switch cmd {
+		case 0x01:
+			cfgBuf.Reset()
+			cfgBuf.WriteString(chunk)
+		case 0x02:
+			cfgBuf.WriteString(chunk)
+		case 0x03:
+			cfgBuf.WriteString(chunk)
+			result := cfgBuf.String()
+			cfgBuf.Reset()
+			fmt.Printf("[config notify] received complete config (%d bytes)\n", len(result))
+			c.cfgMu.Lock()
+			c.cfgJSON = result
+			c.cfgMu.Unlock()
+			// Persist to local file so reconnect gaps and Refresh always have data.
+			if err := os.WriteFile(configFilePath(), []byte(result), 0644); err != nil {
+				fmt.Printf("[config notify] warning: could not write local cache: %v\n", err)
+			}
+			select {
+			case c.cfgChan <- result:
+			default: // already buffered
+			}
+		}
+	}); err != nil {
+		fmt.Printf("[config notify] EnableNotifications failed: %v\n", err)
+	} else {
+		fmt.Println("[config notify] subscribed OK — waiting for device to push config")
+	}
+
+	// Disconnect watchdog: poll readChar every 2 s.
+	// Read returns (0, nil) when connected, (0, err) when the link is gone.
+	// Clears active conn so /status reflects reality.
+	go func() {
+		buf := make([]byte, 4)
+		for {
+			time.Sleep(2 * time.Second)
+			if getConn() != c {
+				return // connection was replaced or already cleared
+			}
+			_, err := c.readChar.Read(buf)
+			if err != nil {
+				fmt.Printf("[watchdog] BLE link lost (%v) — clearing connection\n", err)
+				if getConn() == c {
+					setConn(nil)
+				}
+				return
+			}
+		}
+	}()
 
 	return c, nil
 }
