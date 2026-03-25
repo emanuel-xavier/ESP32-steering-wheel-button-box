@@ -59,6 +59,7 @@ class _BbWriteCallbacks : public NimBLECharacteristicCallbacks {
       _writeBuf += chunk;
       Config cfg = loadConfig();
       if (jsonToConfig(_writeBuf, cfg)) {
+        cfg.recoveryOccurred = false;  // user saved successfully — clear the recovery flag
         saveConfig(cfg);
         if (_pCfgRead) _pCfgRead->setValue(configToJson(cfg).c_str());
         #ifdef SERIAL_DEBUG

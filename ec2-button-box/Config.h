@@ -34,6 +34,9 @@ struct Config {
   uint8_t  matrixCols         = 4;
   uint8_t  matrixRowPins[8]   = {};   // OUTPUT in scan mode, INPUT_PULLUP in direct mode
   uint8_t  matrixColPins[8]   = {};   // INPUT_PULLUP in both modes
+  // Set true when a crash-loop was detected at boot and config was reset to defaults.
+  // Reported to the desktop app via JSON; cleared on the next successful save.
+  bool     recoveryOccurred   = false;
 };
 
 inline Config loadConfig() {
@@ -62,6 +65,7 @@ inline Config loadConfig() {
   cfg.matrixCols       = prefs.getUChar("matCols",     cfg.matrixCols);
   prefs.getBytes("matRowPins", cfg.matrixRowPins, sizeof(cfg.matrixRowPins));
   prefs.getBytes("matColPins", cfg.matrixColPins, sizeof(cfg.matrixColPins));
+  cfg.recoveryOccurred = prefs.getBool("recovered", false);
   prefs.end();
   return cfg;
 }
@@ -91,6 +95,7 @@ inline void saveConfig(const Config& cfg) {
   prefs.putUChar("matCols",     cfg.matrixCols);
   prefs.putBytes("matRowPins", cfg.matrixRowPins,  sizeof(cfg.matrixRowPins));
   prefs.putBytes("matColPins", cfg.matrixColPins,  sizeof(cfg.matrixColPins));
+  prefs.putBool("recovered",   cfg.recoveryOccurred);
   prefs.end();
 }
 
@@ -131,6 +136,7 @@ inline String configToJson(const Config& cfg) {
   for (int i = 0; i < (int)cfg.matrixRows; i++) mrArr.add(cfg.matrixRowPins[i]);
   JsonArray mcArr = doc.createNestedArray("matrixColPins");
   for (int i = 0; i < (int)cfg.matrixCols; i++) mcArr.add(cfg.matrixColPins[i]);
+  doc["recoveryOccurred"] = cfg.recoveryOccurred;
   String out;
   serializeJson(doc, out);
   return out;

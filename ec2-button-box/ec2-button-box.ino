@@ -244,7 +244,43 @@ void setup() {
     Serial.begin(115200);
   #endif
 
-  cfg = loadConfig();
+  // ── Crash-loop detection ─────────────────────────────────────────────────
+  // Count consecutive abnormal resets (WDT / panic). If >= 3 in a row,
+  // the current config is likely causing an OOM crash — reset to defaults
+  // and notify the user via the desktop app's recoveryOccurred flag.
+  {
+    esp_reset_reason_t reason = esp_reset_reason();
+    bool abnormal = (reason == ESP_RST_TASK_WDT ||
+                     reason == ESP_RST_INT_WDT  ||
+                     reason == ESP_RST_WDT       ||
+                     reason == ESP_RST_PANIC);
+    Preferences cp;
+    cp.begin("bbcrash", false);
+    uint8_t crashes = cp.getUChar("count", 0);
+    if (abnormal) {
+      crashes++;
+      cp.putUChar("count", crashes);
+    } else {
+      crashes = 0;
+      cp.putUChar("count", 0);
+    }
+    cp.end();
+
+    if (crashes >= 3) {
+      cfg = Config{};
+      cfg.recoveryOccurred = true;
+      saveConfig(cfg);          // persist defaults + recovered=true
+      Preferences cp2;
+      cp2.begin("bbcrash", false);
+      cp2.putUChar("count", 0); // reset crash counter
+      cp2.end();
+      #ifdef SERIAL_DEBUG
+        Serial.println("[Recovery] Crash-loop detected — config reset to defaults.");
+      #endif
+    } else {
+      cfg = loadConfig();
+    }
+  }
   setupButtons();
   if (cfg.useMatrix)   setupMatrix();
   if (cfg.useEncoders) setupEncoders();
