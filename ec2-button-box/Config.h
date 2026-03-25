@@ -27,10 +27,13 @@ struct Config {
   uint8_t  encoderPins[2][2] = {{26, 27}, {4, 5}};  // [enc][clk=0/dt=1]
   // Button matrix — row/col scanning, active alongside direct buttons
   bool     useMatrix          = false;
+  // directMode: all row + col pins become independent INPUT_PULLUP buttons (rows+cols total).
+  // No scanning, no ghosting, but fewer buttons per pin than scanned mode.
+  bool     matrixDirectMode   = false;
   uint8_t  matrixRows         = 4;
   uint8_t  matrixCols         = 4;
-  uint8_t  matrixRowPins[8]   = {};   // OUTPUT, driven LOW per row
-  uint8_t  matrixColPins[8]   = {};   // INPUT_PULLUP, read per column
+  uint8_t  matrixRowPins[8]   = {};   // OUTPUT in scan mode, INPUT_PULLUP in direct mode
+  uint8_t  matrixColPins[8]   = {};   // INPUT_PULLUP in both modes
 };
 
 inline Config loadConfig() {
@@ -53,9 +56,10 @@ inline Config loadConfig() {
   cfg.encoderZoneResetMask   = prefs.getUInt("encResetMask",   cfg.encoderZoneResetMask);
   prefs.getBytes("btnPins", cfg.buttonPins,  sizeof(cfg.buttonPins));
   prefs.getBytes("encPins", cfg.encoderPins, sizeof(cfg.encoderPins));
-  cfg.useMatrix  = prefs.getBool("useMat",      cfg.useMatrix);
-  cfg.matrixRows = prefs.getUChar("matRows",    cfg.matrixRows);
-  cfg.matrixCols = prefs.getUChar("matCols",    cfg.matrixCols);
+  cfg.useMatrix        = prefs.getBool("useMat",       cfg.useMatrix);
+  cfg.matrixDirectMode = prefs.getBool("matDirect",    cfg.matrixDirectMode);
+  cfg.matrixRows       = prefs.getUChar("matRows",     cfg.matrixRows);
+  cfg.matrixCols       = prefs.getUChar("matCols",     cfg.matrixCols);
   prefs.getBytes("matRowPins", cfg.matrixRowPins, sizeof(cfg.matrixRowPins));
   prefs.getBytes("matColPins", cfg.matrixColPins, sizeof(cfg.matrixColPins));
   prefs.end();
@@ -81,9 +85,10 @@ inline void saveConfig(const Config& cfg) {
   prefs.putUInt("encResetMask",   cfg.encoderZoneResetMask);
   prefs.putBytes("btnPins",    cfg.buttonPins,     32);
   prefs.putBytes("encPins",    cfg.encoderPins,    sizeof(cfg.encoderPins));
-  prefs.putBool("useMat",      cfg.useMatrix);
-  prefs.putUChar("matRows",    cfg.matrixRows);
-  prefs.putUChar("matCols",    cfg.matrixCols);
+  prefs.putBool("useMat",       cfg.useMatrix);
+  prefs.putBool("matDirect",    cfg.matrixDirectMode);
+  prefs.putUChar("matRows",     cfg.matrixRows);
+  prefs.putUChar("matCols",     cfg.matrixCols);
   prefs.putBytes("matRowPins", cfg.matrixRowPins,  sizeof(cfg.matrixRowPins));
   prefs.putBytes("matColPins", cfg.matrixColPins,  sizeof(cfg.matrixColPins));
   prefs.end();
@@ -118,9 +123,10 @@ inline String configToJson(const Config& cfg) {
     row.add(cfg.encoderPins[i][0]);
     row.add(cfg.encoderPins[i][1]);
   }
-  doc["useMatrix"]  = cfg.useMatrix;
-  doc["matrixRows"] = cfg.matrixRows;
-  doc["matrixCols"] = cfg.matrixCols;
+  doc["useMatrix"]        = cfg.useMatrix;
+  doc["matrixDirectMode"] = cfg.matrixDirectMode;
+  doc["matrixRows"]       = cfg.matrixRows;
+  doc["matrixCols"]       = cfg.matrixCols;
   JsonArray mrArr = doc.createNestedArray("matrixRowPins");
   for (int i = 0; i < (int)cfg.matrixRows; i++) mrArr.add(cfg.matrixRowPins[i]);
   JsonArray mcArr = doc.createNestedArray("matrixColPins");
@@ -152,9 +158,10 @@ inline bool jsonToConfig(const String& json, Config& cfg) {
     for (int btn : doc["encoderZoneResetButtons"].as<JsonArray>())
       if (btn >= 1 && btn <= (int)cfg.numButtons) cfg.encoderZoneResetMask |= (1u << (btn - 1));
   }
-  if (doc.containsKey("useMatrix"))      cfg.useMatrix  = doc["useMatrix"].as<bool>();
-  if (doc.containsKey("matrixRows"))     cfg.matrixRows = constrain(doc["matrixRows"].as<int>(), 1, 8);
-  if (doc.containsKey("matrixCols"))     cfg.matrixCols = constrain(doc["matrixCols"].as<int>(), 1, 8);
+  if (doc.containsKey("useMatrix"))        cfg.useMatrix        = doc["useMatrix"].as<bool>();
+  if (doc.containsKey("matrixDirectMode")) cfg.matrixDirectMode = doc["matrixDirectMode"].as<bool>();
+  if (doc.containsKey("matrixRows"))       cfg.matrixRows       = constrain(doc["matrixRows"].as<int>(), 1, 8);
+  if (doc.containsKey("matrixCols"))       cfg.matrixCols       = constrain(doc["matrixCols"].as<int>(), 1, 8);
   if (doc.containsKey("matrixRowPins")) {
     JsonArrayConst mr = doc["matrixRowPins"].as<JsonArrayConst>();
     for (int i = 0; i < 8 && i < (int)mr.size(); i++) cfg.matrixRowPins[i] = mr[i].as<uint8_t>();

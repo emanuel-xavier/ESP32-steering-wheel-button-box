@@ -159,13 +159,17 @@
   </div>
 </div>
 
-<div class="card">
+<div class="card" style="opacity:.45;pointer-events:none" title="Coming soon">
   <h2>Button Matrix</h2>
   <div class="field">
     <label><span>Use Matrix</span><small>Row/column scan — active alongside direct pins</small></label>
     <label class="toggle"><input type="checkbox" id="useMatrix" onchange="onMatrixToggle()"/><span class="slider"></span></label>
   </div>
   <div id="matrixOptions" class="hidden">
+    <div class="field">
+      <label><span>Direct Mode</span><small>All pins INPUT_PULLUP — button fires only when row AND col are both LOW, no scanning</small></label>
+      <label class="toggle"><input type="checkbox" id="matrixDirectMode" onchange="onMatrixDirectModeToggle()"/><span class="slider"></span></label>
+    </div>
     <div class="field">
       <label><span>Rows</span><small>1–8</small></label>
       <input type="number" id="matrixRows" min="1" max="8" value="4" onchange="onMatrixDimsChange()"/>
@@ -175,11 +179,11 @@
       <input type="number" id="matrixCols" min="1" max="8" value="4" onchange="onMatrixDimsChange()"/>
     </div>
     <div class="field" style="flex-direction:column;align-items:flex-start;gap:.4rem">
-      <label><span>Row Pins</span><small>GPIO driven LOW when scanning a row</small></label>
+      <label id="matRowPinsLabel"><span>Row Pins</span><small id="matRowPinsHint">GPIO driven LOW when scanning a row</small></label>
       <div class="matrix-pin-grid" id="matRowPinGrid"></div>
     </div>
     <div class="field" style="flex-direction:column;align-items:flex-start;gap:.4rem">
-      <label><span>Column Pins</span><small>GPIO read with INPUT_PULLUP per column</small></label>
+      <label><span>Column Pins</span><small>GPIO read with INPUT_PULLUP</small></label>
       <div class="matrix-pin-grid" id="matColPinGrid"></div>
     </div>
   </div>
@@ -313,7 +317,7 @@
   const FIELDS = ['bleDeviceName','otaPassword','useEncoders','debounceDelayMs',
                   'encoderDebounceUs','buttonTaskDelayMs','encoderPressDurationMs',
                   'encoderTaskDelayMs','encoderZoneSteps','encoderZoneCount',
-                  'useMatrix','matrixRows','matrixCols'];
+                  'useMatrix','matrixDirectMode','matrixRows','matrixCols'];
 
   // ── Connection state ────────────────────────────────────────────────────────
 
@@ -524,6 +528,7 @@
     }
     // Matrix
     onMatrixToggle();
+    onMatrixDirectModeToggle();
     if (cfg.matrixRows !== undefined || cfg.matrixCols !== undefined) {
       buildMatrixPinGrid('matRowPinGrid', cfg.matrixRows || 4, 'R');
       buildMatrixPinGrid('matColPinGrid', cfg.matrixCols || 4, 'C');
@@ -608,6 +613,12 @@
   function onDirectBtnsToggle() {
     const on = document.getElementById('useDirectButtons').checked;
     document.getElementById('directBtnOptions').classList.toggle('hidden', !on);
+  }
+
+  function onMatrixDirectModeToggle() {
+    const direct = document.getElementById('matrixDirectMode').checked;
+    const hint = document.getElementById('matRowPinsHint');
+    if (hint) hint.textContent = direct ? 'GPIO INPUT_PULLUP — each pin is a button' : 'GPIO driven LOW when scanning a row';
   }
 
   function onMatrixToggle() {

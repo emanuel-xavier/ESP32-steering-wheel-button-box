@@ -63,32 +63,47 @@ void buttonTask(void*) {
 
       // ── Matrix scan ──────────────────────────────────────────────────────
       if (cfg.useMatrix) {
-        static bool matrixState[8][8] = {};
-        for (uint8_t r = 0; r < cfg.matrixRows; r++) {
-          digitalWrite(cfg.matrixRowPins[r], LOW);
-          delayMicroseconds(10);
-          for (uint8_t c = 0; c < cfg.matrixCols; c++) {
-            bool pressed = (digitalRead(cfg.matrixColPins[c]) == LOW);
-            if (pressed != matrixState[r][c]) {
-              matrixState[r][c] = pressed;
-              byte bleBtn = physicalButtons[cfg.numButtons + r * cfg.matrixCols + c];
-              if (pressed) {
-                pBleGamepad->press(bleBtn);
-                notifyButtonEvent(bleBtn, true);
+        if (cfg.matrixDirectMode) {
+          // Direct mode: all pins are INPUT_PULLUP, no row driving.
+          // Button (r,c) fires only when BOTH row[r] AND col[c] read LOW simultaneously.
+          // Same rows×cols button count as scanned mode.
+          static bool directState[8][8] = {};
+          for (uint8_t r = 0; r < cfg.matrixRows; r++) {
+            bool rowLow = (digitalRead(cfg.matrixRowPins[r]) == LOW);
+            for (uint8_t c = 0; c < cfg.matrixCols; c++) {
+              bool pressed = rowLow && (digitalRead(cfg.matrixColPins[c]) == LOW);
+              if (pressed != directState[r][c]) {
+                directState[r][c] = pressed;
+                byte bleBtn = physicalButtons[cfg.numButtons + r * cfg.matrixCols + c];
+                if (pressed) { pBleGamepad->press(bleBtn);   notifyButtonEvent(bleBtn, true);  }
+                else         { pBleGamepad->release(bleBtn); notifyButtonEvent(bleBtn, false); }
+                pBleGamepad->sendReport();
                 #ifdef SERIAL_DEBUG
-                  Serial.printf("Matrix [%d][%d] pressed  -> button %d\n", r, c, bleBtn);
-                #endif
-              } else {
-                pBleGamepad->release(bleBtn);
-                notifyButtonEvent(bleBtn, false);
-                #ifdef SERIAL_DEBUG
-                  Serial.printf("Matrix [%d][%d] released -> button %d\n", r, c, bleBtn);
+                  Serial.printf("Direct [%d][%d] %s -> button %d\n", r, c, pressed ? "pressed" : "released", bleBtn);
                 #endif
               }
-              pBleGamepad->sendReport();
             }
           }
-          digitalWrite(cfg.matrixRowPins[r], HIGH);
+        } else {
+          static bool matrixState[8][8] = {};
+          for (uint8_t r = 0; r < cfg.matrixRows; r++) {
+            digitalWrite(cfg.matrixRowPins[r], LOW);
+            delayMicroseconds(10);
+            for (uint8_t c = 0; c < cfg.matrixCols; c++) {
+              bool pressed = (digitalRead(cfg.matrixColPins[c]) == LOW);
+              if (pressed != matrixState[r][c]) {
+                matrixState[r][c] = pressed;
+                byte bleBtn = physicalButtons[cfg.numButtons + r * cfg.matrixCols + c];
+                if (pressed) { pBleGamepad->press(bleBtn);   notifyButtonEvent(bleBtn, true);  }
+                else         { pBleGamepad->release(bleBtn); notifyButtonEvent(bleBtn, false); }
+                pBleGamepad->sendReport();
+                #ifdef SERIAL_DEBUG
+                  Serial.printf("Matrix [%d][%d] %s -> button %d\n", r, c, pressed ? "pressed" : "released", bleBtn);
+                #endif
+              }
+            }
+            digitalWrite(cfg.matrixRowPins[r], HIGH);
+          }
         }
       }
     }
@@ -191,12 +206,16 @@ void setupButtons() {
 }
 
 void setupMatrix() {
-  for (uint8_t c = 0; c < cfg.matrixCols; c++) {
-    pinMode(cfg.matrixColPins[c], INPUT_PULLUP);
-  }
-  for (uint8_t r = 0; r < cfg.matrixRows; r++) {
-    pinMode(cfg.matrixRowPins[r], OUTPUT);
-    digitalWrite(cfg.matrixRowPins[r], HIGH);  // idle HIGH — not selecting any row
+  if (cfg.matrixDirectMode) {
+    // All row + col pins are independent INPUT_PULLUP buttons (no scanning).
+    for (uint8_t r = 0; r < cfg.matrixRows; r++) pinMode(cfg.matrixRowPins[r], INPUT_PULLUP);
+    for (uint8_t c = 0; c < cfg.matrixCols; c++) pinMode(cfg.matrixColPins[c], INPUT_PULLUP);
+  } else {
+    for (uint8_t c = 0; c < cfg.matrixCols; c++) pinMode(cfg.matrixColPins[c], INPUT_PULLUP);
+    for (uint8_t r = 0; r < cfg.matrixRows; r++) {
+      pinMode(cfg.matrixRowPins[r], OUTPUT);
+      digitalWrite(cfg.matrixRowPins[r], HIGH);  // idle HIGH — not selecting any row
+    }
   }
 }
 
@@ -233,7 +252,7 @@ void setup() {
   // Init NimBLE and register the config service BEFORE setupBleGamepad().
   // All services must be created before BleGamepad::begin() finalises the GATT table.
   NimBLEDevice::init(cfg.bleDeviceName.c_str());
-  registerConfigService(NimBLEDevice::createServer());
+  registerConfigService(NimBLEDevice::createServer(), cfg);
 
   setupBleGamepad(); // adds HID service to the same server, then starts advertising
 

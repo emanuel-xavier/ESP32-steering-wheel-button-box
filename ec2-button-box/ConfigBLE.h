@@ -21,8 +21,9 @@
 #define BB_OTA_TRIGGER_UUID  "bb010004-feed-dead-beef-cafebabe0001"
 #define BB_BTN_NOTIFY_UUID   "bb010005-feed-dead-beef-cafebabe0001"
 
-// Global pointer set during registerConfigService(); used by notifyButtonEvent().
+// Global pointers set during registerConfigService().
 static NimBLECharacteristic* _pBtnNotify = nullptr;
+static NimBLECharacteristic* _pCfgRead   = nullptr;
 
 // Call from any task when a button is pressed or released.
 // btnNumber is the 1-based gamepad button number (same as physicalButtons[i]).
@@ -32,11 +33,9 @@ inline void notifyButtonEvent(uint8_t btnNumber, bool press) {
   _pBtnNotify->notify(buf, sizeof(buf));
 }
 
-class _BbReadCallbacks : public NimBLECharacteristicCallbacks {
-  void onRead(NimBLECharacteristic* pChar, NimBLEConnInfo&) override {
-    pChar->setValue(configToJson(loadConfig()).c_str());
-  }
-};
+// No onRead callback — value is pre-populated at boot and refreshed after each save.
+// Calling loadConfig() inside the NimBLE host task's onRead overflows its stack
+// (Preferences NVS work is too heavy), causing ATT error 0x0e and killing advertising.
 
 // Chunked-write reassembly buffer (shared across calls within one transaction).
 static String _writeBuf;
@@ -61,6 +60,7 @@ class _BbWriteCallbacks : public NimBLECharacteristicCallbacks {
       Config cfg = loadConfig();
       if (jsonToConfig(_writeBuf, cfg)) {
         saveConfig(cfg);
+        if (_pCfgRead) _pCfgRead->setValue(configToJson(cfg).c_str());
         #ifdef SERIAL_DEBUG
           Serial.println("[BLE Config] Config saved to NVS.");
         #endif
@@ -97,14 +97,16 @@ class _BbOtaCallbacks : public NimBLECharacteristicCallbacks {
 // Register the config GATT service on the NimBLE server.
 // MUST be called BEFORE BleGamepad::begin() so all services are finalized
 // together when the NimBLE host syncs.
-inline void registerConfigService(NimBLEServer* pServer) {
+inline void registerConfigService(NimBLEServer* pServer, const Config& bootCfg) {
   NimBLEDevice::setMTU(512);
 
   NimBLEService* pService = pServer->createService(BB_SERVICE_UUID);
 
-  NimBLECharacteristic* pRead = pService->createCharacteristic(
+  _pCfgRead = pService->createCharacteristic(
     BB_CFG_READ_UUID, NIMBLE_PROPERTY::READ);
-  pRead->setCallbacks(new _BbReadCallbacks());
+  // Value pre-populated here; no onRead callback (see note above).
+  // After a save, onWrite refreshes _pCfgRead so the next read is current.
+  _pCfgRead->setValue(configToJson(bootCfg).c_str());
 
   NimBLECharacteristic* pWrite = pService->createCharacteristic(
     BB_CFG_WRITE_UUID, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
