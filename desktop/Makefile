@@ -9,23 +9,25 @@ OUTDIR  := build
 linux: $(OUTDIR)
 	CGO_ENABLED=1 go build -o $(OUTDIR)/$(APP)-linux-amd64 .
 
-# ── Windows ───────────────────────────────────────────────────────────────────
-# Cross-compile using the fyne CLI tool or build natively on Windows.
-#
-# Install fyne CLI:  go install fyne.io/fyne/v2/cmd/fyne@latest
-# Cross-compile:     fyne-cross windows -arch amd64
-#
-# Or natively on Windows:
-#   CGO_ENABLED=1 go build -ldflags="-H windowsgui" -o build\buttonbox-config-windows-amd64.exe .
+# ── Windows (cross-compiled from Linux via mingw-w64) ─────────────────────────
+# Requires: mingw-w64
+#   Arch:   sudo pacman -S mingw-w64-gcc
+#   Ubuntu: sudo apt install gcc-mingw-w64 g++-mingw-w64
 
 windows: $(OUTDIR)
-	@echo "Windows builds are best done natively or via fyne-cross."
-	@echo "  Install: go install github.com/fyne-io/fyne-cross@latest"
-	@echo "  Run:     fyne-cross windows -arch amd64"
+	CGO_ENABLED=1 GOOS=windows GOARCH=amd64 \
+		CC=x86_64-w64-mingw32-gcc CXX=x86_64-w64-mingw32-g++ \
+		go build -ldflags="-s -w -H windowsgui" \
+		-o $(OUTDIR)/$(APP)-windows-amd64.exe .
 
 # ── Both ──────────────────────────────────────────────────────────────────────
 
 all: linux
+	@if command -v x86_64-w64-mingw32-gcc >/dev/null 2>&1; then \
+		$(MAKE) windows; \
+	else \
+		echo "Skipping Windows build: mingw-w64 not found (sudo pacman -S mingw-w64-gcc)"; \
+	fi
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
