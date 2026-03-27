@@ -22,9 +22,12 @@ struct Config {
   // Bitmask of physical buttons (bit N = button N+1) that must all be held simultaneously
   // to reset the master encoder position to 0. 0 = feature disabled.
   uint32_t encoderZoneResetMask   = 0;
+  // Per-button GPIO input mode: 0 = INPUT_PULLUP (default), 1 = INPUT_PULLDOWN, 2 = INPUT
+  // Pins 34/35/36/39 lack internal pull resistors — use 1 or 2 with an external resistor.
+  uint8_t  buttonInputModes[32] = {};
   // Pin assignments — GPIO numbers for each button and encoder channel
-  uint8_t  buttonPins[32]    = {2, 13, 15, 14, 16, 17, 18, 19, 21, 22, 23, 25, 32, 33};
-  uint8_t  encoderPins[2][2] = {{26, 27}, {4, 5}};  // [enc][clk=0/dt=1]
+  uint8_t  buttonPins[32]    = {2, 5, 13, 14, 15, 17, 18, 19, 21, 22, 23, 25, 32, 33};
+  uint8_t  encoderPins[2][2] = {{26, 27}, {4, 16}};  // [enc][clk=0/dt=1]
   // Button matrix — row/col scanning, active alongside direct buttons
   bool     useMatrix          = false;
   // directMode: all row + col pins become independent INPUT_PULLUP buttons (rows+cols total).
@@ -57,6 +60,7 @@ inline Config loadConfig() {
   cfg.encoderZoneSteps       = prefs.getUInt("encZoneSteps",   cfg.encoderZoneSteps);
   cfg.encoderZoneCount       = prefs.getUInt("encZoneCount",   cfg.encoderZoneCount);
   cfg.encoderZoneResetMask   = prefs.getUInt("encResetMask",   cfg.encoderZoneResetMask);
+  prefs.getBytes("btnModes", cfg.buttonInputModes, sizeof(cfg.buttonInputModes));
   prefs.getBytes("btnPins", cfg.buttonPins,  sizeof(cfg.buttonPins));
   prefs.getBytes("encPins", cfg.encoderPins, sizeof(cfg.encoderPins));
   cfg.useMatrix        = prefs.getBool("useMat",       cfg.useMatrix);
@@ -87,6 +91,7 @@ inline void saveConfig(const Config& cfg) {
   prefs.putUInt("encZoneSteps",   cfg.encoderZoneSteps);
   prefs.putUInt("encZoneCount",   cfg.encoderZoneCount);
   prefs.putUInt("encResetMask",   cfg.encoderZoneResetMask);
+  prefs.putBytes("btnModes",   cfg.buttonInputModes, sizeof(cfg.buttonInputModes));
   prefs.putBytes("btnPins",    cfg.buttonPins,     32);
   prefs.putBytes("encPins",    cfg.encoderPins,    sizeof(cfg.encoderPins));
   prefs.putBool("useMat",       cfg.useMatrix);
@@ -120,6 +125,8 @@ inline String configToJson(const Config& cfg) {
   JsonArray resetArr = doc.createNestedArray("encoderZoneResetButtons");
   for (int i = 0; i < (int)cfg.numButtons; i++)
     if (cfg.encoderZoneResetMask & (1u << i)) resetArr.add(i + 1);
+  JsonArray imArr = doc.createNestedArray("buttonInputModes");
+  for (int i = 0; i < (int)cfg.numButtons; i++) imArr.add(cfg.buttonInputModes[i]);
   JsonArray bpArr = doc.createNestedArray("buttonPins");
   for (int i = 0; i < (int)cfg.numButtons; i++) bpArr.add(cfg.buttonPins[i]);
   JsonArray epArr = doc.createNestedArray("encoderPins");
@@ -175,6 +182,11 @@ inline bool jsonToConfig(const String& json, Config& cfg) {
   if (doc.containsKey("matrixColPins")) {
     JsonArrayConst mc = doc["matrixColPins"].as<JsonArrayConst>();
     for (int i = 0; i < 8 && i < (int)mc.size(); i++) cfg.matrixColPins[i] = mc[i].as<uint8_t>();
+  }
+  if (doc.containsKey("buttonInputModes")) {
+    JsonArrayConst im = doc["buttonInputModes"].as<JsonArrayConst>();
+    for (int i = 0; i < 32 && i < (int)im.size(); i++)
+      cfg.buttonInputModes[i] = (uint8_t)constrain(im[i].as<int>(), 0, 2);
   }
   if (doc.containsKey("buttonPins")) {
     JsonArrayConst bp = doc["buttonPins"].as<JsonArrayConst>();

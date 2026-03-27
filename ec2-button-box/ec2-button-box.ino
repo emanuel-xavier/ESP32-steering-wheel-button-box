@@ -4,6 +4,8 @@
 // Open the desktop app, click Scan, and configure without any special boot mode.
 //
 // Required extra library: ArduinoJson >= 6.x  (Arduino Library Manager)
+// {12, 5, 13, 15, 14, 17, 18, 19, 21, 22, 23, 25, 32, 33} 
+// {26, 27}, {4, 16}
 
 #include <Arduino.h>
 #include <Bounce2.h>      // https://github.com/thomasfredericks/Bounce2
@@ -41,7 +43,11 @@ void buttonTask(void*) {
       bool dirty = false;
       for (byte i = 0; i < cfg.numButtons; i++) {
         debouncers[i].update();
-        if (debouncers[i].fell()) {
+        // mode 1 = INPUT_PULLDOWN = active-high: rose()=press, fell()=release
+        bool activeHigh = (cfg.buttonInputModes[i] == 1);
+        bool isPress    = activeHigh ? debouncers[i].rose() : debouncers[i].fell();
+        bool isRelease  = activeHigh ? debouncers[i].fell() : debouncers[i].rose();
+        if (isPress) {
           buttonState |= (1u << i);
           pBleGamepad->press(physicalButtons[i]);
           notifyButtonEvent(physicalButtons[i], true);
@@ -49,7 +55,7 @@ void buttonTask(void*) {
           #ifdef SERIAL_DEBUG
             Serial.printf("Button %d pressed  (pin %d)\n", physicalButtons[i], cfg.buttonPins[i]);
           #endif
-        } else if (debouncers[i].rose()) {
+        } else if (isRelease) {
           buttonState &= ~(1u << i);
           pBleGamepad->release(physicalButtons[i]);
           notifyButtonEvent(physicalButtons[i], false);
@@ -194,8 +200,10 @@ void encoderZonesTask(void*) {
 
 // ── Setup helpers ────────────────────────────────────────────────────────────
 void setupButtons() {
+  static const uint8_t kModeMap[] = {INPUT_PULLUP, INPUT_PULLDOWN, INPUT};
   for (byte i = 0; i < cfg.numButtons; i++) {
-    pinMode(cfg.buttonPins[i], INPUT_PULLUP);
+    uint8_t mode = kModeMap[min(cfg.buttonInputModes[i], (uint8_t)2)];
+    pinMode(cfg.buttonPins[i], mode);
     debouncers[i].attach(cfg.buttonPins[i]);
     debouncers[i].interval(cfg.debounceDelayMs);
   }

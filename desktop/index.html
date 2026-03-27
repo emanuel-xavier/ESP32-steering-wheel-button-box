@@ -65,6 +65,10 @@
     .pin-cell{display:flex;flex-direction:column;align-items:center;gap:.2rem}
     .pin-cell span{font-size:.7rem;color:var(--muted);font-weight:600}
     .pin-cell input{width:46px;text-align:center;padding:.3rem .2rem;font-size:.85rem}
+    .pin-cell select{width:46px;background:var(--bg);border:1px solid var(--border);
+      border-radius:4px;color:var(--muted);padding:.15rem .1rem;font-size:.72rem;outline:none;
+      cursor:pointer;transition:border-color .15s}
+    .pin-cell select:focus{border-color:var(--accent)}
     .enc-pin-row{display:flex;align-items:center;gap:.6rem}
     .enc-pin-row span{font-size:.8rem;color:var(--muted);min-width:28px}
     .matrix-pin-grid{display:grid;gap:.4rem;margin-top:.6rem}
@@ -165,7 +169,7 @@
       <input type="number" id="numButtons" min="1" max="32" value="14" oninput="onNumButtonsChange()"/>
     </div>
     <div class="field" style="flex-direction:column;align-items:flex-start;gap:.4rem">
-      <label><span>Button Pins</span><small>GPIO number for each button</small></label>
+      <label><span>Button Pins</span><small>GPIO pin and input mode per button (PU=PULLUP · PD=PULLDOWN · IN=INPUT/external)</small></label>
       <div class="pin-grid" id="btnPinGrid"></div>
     </div>
   </div>
@@ -316,9 +320,16 @@
 
 <div class="card hidden" id="debugCard">
   <h2>Debug Monitor</h2>
-  <div style="margin-bottom:1rem">
+  <div style="margin-bottom:.75rem">
     <span style="font-size:.85rem;color:var(--muted)">Currently pressed</span>
     <div id="debugPressed" style="display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.5rem;min-height:34px"></div>
+  </div>
+  <div style="margin-bottom:1rem">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem">
+      <span style="font-size:.85rem;color:var(--muted)">Last pressed</span>
+      <input type="number" id="recentCount" min="1" max="32" value="10" style="width:56px;padding:.25rem .4rem;font-size:.82rem" oninput="renderRecent()" title="How many buttons to show"/>
+    </div>
+    <div id="debugRecent" style="display:flex;flex-wrap:wrap;gap:.35rem;min-height:34px"></div>
   </div>
   <div>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.4rem">
@@ -415,6 +426,9 @@
     document.getElementById('btnOta').disabled  = false;
     loadConfig();
     startPoll();
+    // Re-open the debug stream if the panel was left open across a reconnect.
+    const debugCard = document.getElementById('debugCard');
+    if (debugCard && !debugCard.classList.contains('hidden')) startDebugStream();
   }
 
   // ── Discovery ──────────────────────────────────────────────────────────────
@@ -526,6 +540,7 @@
   }
 
   function populateForm(cfg) {
+    _loadedCfg = cfg;
     document.getElementById('recoveryBanner').classList.toggle('visible', !!cfg.recoveryOccurred);
     for (const k of FIELDS) {
       if (k === 'encoderZoneCount') continue;
@@ -551,6 +566,11 @@
       cfg.buttonPins.forEach((pin, i) => {
         const el = document.getElementById('btnPin' + (i + 1));
         if (el) el.value = pin;
+      });
+    if (cfg.buttonInputModes !== undefined)
+      cfg.buttonInputModes.forEach((mode, i) => {
+        const el = document.getElementById('btnMode' + (i + 1));
+        if (el) el.value = mode;
       });
     if (cfg.encoderPins !== undefined) {
       const ids = [['encPin0clk',0,0],['encPin0dt',0,1],['encPin1clk',1,0],['encPin1dt',1,1]];
@@ -595,6 +615,8 @@
     cfg.encoderZoneResetButtons = getResetButtons();
     cfg.buttonPins = Array.from({length: btnCount}, (_, i) =>
       Number(document.getElementById('btnPin' + (i + 1))?.value ?? DEFAULT_BTN_PINS[i] ?? 0));
+    cfg.buttonInputModes = Array.from({length: btnCount}, (_, i) =>
+      Number(document.getElementById('btnMode' + (i + 1))?.value ?? 0));
     cfg.encoderPins = [
       [Number(document.getElementById('encPin0clk').value), Number(document.getElementById('encPin0dt').value)],
       [Number(document.getElementById('encPin1clk').value), Number(document.getElementById('encPin1dt').value)],
@@ -756,24 +778,33 @@
 
   // ── Pin grid ───────────────────────────────────────────────────────────────
 
-  const DEFAULT_BTN_PINS = [2,13,15,14,16,17,18,19,21,22,23,25,32,33];
+  const DEFAULT_BTN_PINS = [2, 5, 13, 14, 15, 17, 18, 19, 21, 22, 23, 25, 32, 33];
 
   function buildBtnPinGrid(count) {
     count = (count != null) ? count : Number(document.getElementById('numButtons').value);
     count = Math.max(0, Math.min(32, count));
     // Preserve values already in the DOM before rebuilding
-    const saved = {};
+    const saved = {}, savedModes = {};
     for (let i = 1; i <= 32; i++) {
       const el = document.getElementById('btnPin' + i);
       if (el) saved[i] = Number(el.value);
+      const me = document.getElementById('btnMode' + i);
+      if (me) savedModes[i] = Number(me.value);
     }
     const grid = document.getElementById('btnPinGrid');
     grid.innerHTML = '';
     for (let i = 1; i <= count; i++) {
-      const val = saved[i] !== undefined ? saved[i] : (DEFAULT_BTN_PINS[i-1] ?? 0);
+      const val  = saved[i]      !== undefined ? saved[i]      : (DEFAULT_BTN_PINS[i-1] ?? 0);
+      const mval = savedModes[i] !== undefined ? savedModes[i] : 0;
+      const sel = (v, label) => `<option value="${v}"${mval===v?' selected':''}>${label}</option>`;
       const cell = document.createElement('div');
       cell.className = 'pin-cell';
-      cell.innerHTML = `<span>B${i}</span><input type="number" id="btnPin${i}" min="0" max="39" value="${val}"/>`;
+      cell.innerHTML =
+        `<span>B${i}</span>` +
+        `<input type="number" id="btnPin${i}" min="0" max="39" value="${val}"/>` +
+        `<select id="btnMode${i}" title="PU=INPUT_PULLUP  PD=INPUT_PULLDOWN  IN=INPUT (external resistor)">` +
+          sel(0,'PU') + sel(1,'PD') + sel(2,'IN') +
+        `</select>`;
       grid.appendChild(cell);
     }
   }
@@ -795,8 +826,34 @@
   // ── Debug monitor ───────────────────────────────────────────────────────────
 
   let _debugEvtSource = null;
+  let _loadedCfg      = null;   // set by populateForm; used by getButtonLabel
   const _pressedBtns  = new Set();
+  const _recentBtns   = [];     // ordered list of recently pressed buttons (most recent last)
   const MAX_LOG       = 50;
+
+  // Returns a display label for a 1-based gamepad button number.
+  // Encoder buttons are labelled "Enc1 CW", "Z2 CCW", etc. using the loaded config.
+  function getButtonLabel(n) {
+    if (!_loadedCfg || !_loadedCfg.useEncoders)
+      return { label: String(n), enc: false };
+    const numDirect  = _loadedCfg.numButtons  || 0;
+    const matButtons = _loadedCfg.useMatrix
+      ? (_loadedCfg.matrixRows || 0) * (_loadedCfg.matrixCols || 0) : 0;
+    const encBase = numDirect + matButtons + 1; // first encoder button (1-based)
+    if (n < encBase) return { label: String(n), enc: false };
+    const idx = n - encBase; // 0-based index within encoder buttons
+    if (_loadedCfg.encoderZonesMode) {
+      const zone = Math.floor(idx / 2);
+      const dir  = idx % 2 === 0 ? 'CW' : 'CCW';
+      const zoneCount = _loadedCfg.encoderZoneCount || 2;
+      if (zone < zoneCount) return { label: `${n} Z${zone + 1} ${dir}`, enc: true };
+    } else {
+      const encIdx = Math.floor(idx / 2);
+      const dir    = idx % 2 === 0 ? 'CW' : 'CCW';
+      if (encIdx < 2) return { label: `${n} Enc${encIdx + 1} ${dir}`, enc: true };
+    }
+    return { label: String(n), enc: false };
+  }
 
   function toggleDebug() {
     const card = document.getElementById('debugCard');
@@ -808,23 +865,43 @@
 
   function startDebugStream() {
     if (_debugEvtSource) return;
+    renderRecent();
     _debugEvtSource = new EventSource('/debug/events');
     _debugEvtSource.onmessage = (e) => {
       const { btn, evt } = JSON.parse(e.data);
       const press = evt === 'press';
-      if (press) _pressedBtns.add(btn); else _pressedBtns.delete(btn);
+      if (press) {
+        _pressedBtns.add(btn);
+        _recentBtns.push(btn);
+      } else {
+        _pressedBtns.delete(btn);
+      }
       renderPressed();
+      renderRecent();
       appendLog(btn, press);
     };
     _debugEvtSource.onerror = () => {
-      // reconnects automatically; nothing to do
+      // Disable the browser's built-in auto-reconnect: close and null so we
+      // control exactly when a new stream is opened (in onConnected / the
+      // retry below), preventing two simultaneous SSE subscriptions in the
+      // Go broker which would deliver every event twice.
+      if (_debugEvtSource) { _debugEvtSource.close(); _debugEvtSource = null; }
+      // Retry after a short delay in case this was a transient HTTP hiccup
+      // (BLE still up).  The guard in startDebugStream prevents a double-open
+      // if onConnected fires at the same time.
+      setTimeout(() => {
+        const card = document.getElementById('debugCard');
+        if (card && !card.classList.contains('hidden')) startDebugStream();
+      }, 3000);
     };
   }
 
   function stopDebugStream() {
     if (_debugEvtSource) { _debugEvtSource.close(); _debugEvtSource = null; }
     _pressedBtns.clear();
+    _recentBtns.length = 0;
     renderPressed();
+    renderRecent();
   }
 
   function renderPressed() {
@@ -835,9 +912,10 @@
       return;
     }
     [..._pressedBtns].sort((a, b) => a - b).forEach(n => {
+      const { label, enc } = getButtonLabel(n);
       const chip = document.createElement('span');
-      chip.textContent = n;
-      chip.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:6px;background:var(--accent);color:#fff;font-size:.85rem;font-weight:700';
+      chip.textContent = label;
+      chip.style.cssText = `display:inline-flex;align-items:center;justify-content:center;padding:0 .5rem;min-width:34px;height:34px;border-radius:6px;background:${enc ? 'var(--success)' : 'var(--accent)'};color:#fff;font-size:.8rem;font-weight:700`;
       el.appendChild(chip);
     });
   }
@@ -845,19 +923,43 @@
   function appendLog(btn, press) {
     const log  = document.getElementById('debugLog');
     const time = new Date().toLocaleTimeString('en', {hour12: false, hour:'2-digit', minute:'2-digit', second:'2-digit'});
+    const { label, enc } = getButtonLabel(btn);
     const row  = document.createElement('div');
     row.style.cssText = `padding:.15rem .3rem;border-radius:3px;background:${press ? '#1a2d1a' : '#1a1a2d'}`;
-    row.innerHTML = `<span style="color:var(--muted)">${time}</span>&nbsp; btn <strong style="color:${press ? 'var(--success)' : 'var(--accent)'}">${btn}</strong>&nbsp;<span style="color:var(--muted)">${press ? 'pressed' : 'released'}</span>`;
+    const kind = enc ? 'enc' : 'btn';
+    const color = enc ? (press ? '#4caf7d' : '#7b829a') : (press ? 'var(--success)' : 'var(--accent)');
+    row.innerHTML = `<span style="color:var(--muted)">${time}</span>&nbsp; ${kind} <strong style="color:${color}">${label}</strong>&nbsp;<span style="color:var(--muted)">${press ? 'pressed' : 'released'}</span>`;
     log.appendChild(row);
     // trim to MAX_LOG entries
     while (log.children.length > MAX_LOG) log.removeChild(log.firstChild);
     log.scrollTop = log.scrollHeight;
   }
 
+  function renderRecent() {
+    const el    = document.getElementById('debugRecent');
+    const limit = Math.max(1, Math.min(32, Number(document.getElementById('recentCount').value) || 10));
+    const slice = _recentBtns.slice(-limit);
+    el.innerHTML = '';
+    if (slice.length === 0) {
+      el.innerHTML = '<span style="color:var(--muted);font-size:.82rem">— none —</span>';
+      return;
+    }
+    // Show most-recent first
+    slice.reverse().forEach(n => {
+      const { label, enc } = getButtonLabel(n);
+      const chip = document.createElement('span');
+      chip.textContent = label;
+      chip.style.cssText = `display:inline-flex;align-items:center;justify-content:center;padding:0 .5rem;min-width:34px;height:34px;border-radius:6px;background:${enc ? '#1a3028' : '#1a1d3a'};border:1px solid ${enc ? 'var(--success)' : 'var(--accent)'};color:${enc ? 'var(--success)' : 'var(--accent)'};font-size:.8rem;font-weight:700`;
+      el.appendChild(chip);
+    });
+  }
+
   function clearLog() {
     document.getElementById('debugLog').innerHTML = '';
     _pressedBtns.clear();
+    _recentBtns.length = 0;
     renderPressed();
+    renderRecent();
   }
 </script>
 </body>

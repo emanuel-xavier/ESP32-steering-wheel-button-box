@@ -78,7 +78,7 @@ class _BbReadCallbacks : public NimBLECharacteristicCallbacks {
   void onRead(NimBLECharacteristic* pChar, NimBLEConnInfo&) override {
     pChar->setValue((uint8_t*)_cfgJsonCache.c_str(), _cfgJsonCache.length());
     #ifdef SERIAL_DEBUG
-      Serial.printf("[BLE Config] onRead: serving %u bytes\n", _cfgJsonCache.length());
+      // Serial.printf("[BLE Config] onRead: serving %u bytes\n", _cfgJsonCache.length());
     #endif
   }
   void onSubscribe(NimBLECharacteristic*, NimBLEConnInfo&, uint16_t subValue) override {
