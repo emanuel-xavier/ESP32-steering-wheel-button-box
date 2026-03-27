@@ -19,6 +19,12 @@ import (
 //go:embed index.html
 var indexHTML string
 
+//go:embed app.css
+var appCSS string
+
+//go:embed app.js
+var appJS string
+
 // ── BLE UUIDs ─────────────────────────────────────────────────────────────────
 
 func mustUUID(s string) bluetooth.UUID {
@@ -108,6 +114,14 @@ func main() {
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Write([]byte(indexHTML))
+	})
+	mux.HandleFunc("/app.css", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/css; charset=utf-8")
+		w.Write([]byte(appCSS))
+	})
+	mux.HandleFunc("/app.js", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+		w.Write([]byte(appJS))
 	})
 	mux.HandleFunc("/discover", handleDiscover)
 	mux.HandleFunc("/status", handleStatus)
