@@ -162,6 +162,15 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 
 func handleDiscover(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	// Explicitly disconnect any stale connection before reconnecting.
+	// On Linux/BlueZ, characteristics reuse the same D-Bus path for the same
+	// device. Without an explicit Disconnect(), the old EnableNotifications
+	// signal handler is never removed; the new call adds a second one, causing
+	// every BLE notification to fire twice and appear twice in the debug log.
+	if old := getConn(); old != nil {
+		old.device.Disconnect()
+		setConn(nil)
+	}
 	c, err := scanAndConnect()
 	if err != nil {
 		json.NewEncoder(w).Encode(map[string]any{"found": false, "error": err.Error()})
@@ -468,6 +477,7 @@ func scanAndConnect() (*bleConn, error) {
 			_, err := c.readChar.Read(buf)
 			if err != nil {
 				fmt.Printf("[watchdog] BLE link lost (%v) — clearing connection\n", err)
+				c.device.Disconnect()
 				if getConn() == c {
 					setConn(nil)
 				}
