@@ -19,6 +19,7 @@ const FIELDS = ['bleDeviceName','otaPassword','useEncoders','debounceDelayMs',
 
 let _pollTimer      = null;
 let _reconnectTimer = null;
+let _encodersOn     = true;
 
 function startPoll() {
   stopPoll();
@@ -77,11 +78,37 @@ function onConnected() {
   show('configSection');
   document.getElementById('btnSave').disabled = false;
   document.getElementById('btnOta').disabled  = false;
+  _encodersOn = true;
+  updateEncToggleBtn();
   loadConfig();
   startPoll();
   // Re-open the debug stream if the panel was left open across a reconnect.
   const debugCard = document.getElementById('debugCard');
   if (debugCard && !debugCard.classList.contains('hidden')) startDebugStream();
+}
+
+function updateEncToggleBtn() {
+  const btn = document.getElementById('btnEncToggle');
+  if (!btn) return;
+  btn.textContent = _encodersOn ? 'Enc ON' : 'Enc OFF';
+  btn.style.color = _encodersOn ? '' : 'var(--danger)';
+}
+
+async function toggleEncoders() {
+  const next = !_encodersOn;
+  try {
+    const res = await fetch('/encoders', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({enabled: next})
+    });
+    if (res.status === 503) { handleDisconnect(); return; }
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    _encodersOn = next;
+    updateEncToggleBtn();
+  } catch (e) {
+    setStatus('Encoder toggle failed: ' + e.message, 'error');
+  }
 }
 
 // ── Discovery ──────────────────────────────────────────────────────────────
@@ -132,6 +159,54 @@ function buildResetPicker() {
     chip.onclick = () => toggleResetBtn(i);
     picker.appendChild(chip);
   }
+}
+
+function buildEncTogglePicker(count) {
+  count = count || Number(document.getElementById('numButtons').value) || 14;
+  const current = getEncToggleButton();
+  const picker = document.getElementById('encTogglePicker');
+  picker.innerHTML = '';
+  for (let i = 1; i <= count; i++) {
+    const chip = document.createElement('div');
+    chip.id = 'encToggleBtn' + i;
+    chip.textContent = i;
+    chip.dataset.active = 'false';
+    chip.style.cssText = 'width:34px;height:34px;display:flex;align-items:center;justify-content:center;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--muted);cursor:pointer;font-size:.85rem;font-weight:600;transition:all .15s;user-select:none';
+    chip.onclick = () => selectEncToggleBtn(i);
+    picker.appendChild(chip);
+  }
+  if (current >= 1 && current <= count) _applyEncToggleChip(current, true);
+}
+
+function _applyEncToggleChip(n, active) {
+  const chip = document.getElementById('encToggleBtn' + n);
+  if (!chip) return;
+  chip.dataset.active = active;
+  chip.style.borderColor = active ? 'var(--success)' : 'var(--border)';
+  chip.style.color       = active ? 'var(--success)' : 'var(--muted)';
+  chip.style.background  = active ? '#1a3028'        : 'var(--bg)';
+}
+
+function selectEncToggleBtn(n) {
+  // Deselect previous
+  const prev = getEncToggleButton();
+  if (prev) _applyEncToggleChip(prev, false);
+  // Toggle off if clicking the same one
+  if (prev === n) return;
+  _applyEncToggleChip(n, true);
+}
+
+function getEncToggleButton() {
+  const picker = document.getElementById('encTogglePicker');
+  if (!picker) return 0;
+  for (const chip of picker.children)
+    if (chip.dataset.active === 'true') return Number(chip.textContent);
+  return 0;
+}
+
+function setEncToggleButton(n) {
+  buildEncTogglePicker();
+  if (n >= 1) _applyEncToggleChip(n, true);
 }
 
 function toggleResetBtn(n) {
@@ -215,6 +290,7 @@ function populateForm(cfg) {
   if (cfg.encoderZonesMode       !== undefined) setMode(cfg.encoderZonesMode);
   if (cfg.encoderZoneMaster      !== undefined) setMaster(cfg.encoderZoneMaster);
   if (cfg.encoderZoneResetButtons !== undefined) setResetButtons(cfg.encoderZoneResetButtons);
+  if (cfg.encoderToggleButton     !== undefined) setEncToggleButton(cfg.encoderToggleButton);
   if (cfg.buttonPins !== undefined)
     cfg.buttonPins.forEach((pin, i) => {
       const el = document.getElementById('btnPin' + (i + 1));
@@ -266,6 +342,7 @@ function readForm() {
   cfg.encoderZonesMode        = document.getElementById('encoderZonesMode').value === 'true';
   cfg.encoderZoneMaster       = Number(document.getElementById('encoderZoneMaster').value);
   cfg.encoderZoneResetButtons = getResetButtons();
+  cfg.encoderToggleButton     = getEncToggleButton();
   cfg.buttonPins = Array.from({length: btnCount}, (_, i) =>
     Number(document.getElementById('btnPin' + (i + 1))?.value ?? DEFAULT_BTN_PINS[i] ?? 0));
   cfg.buttonInputModes = Array.from({length: btnCount}, (_, i) =>
@@ -465,6 +542,7 @@ function buildBtnPinGrid(count) {
 function onNumButtonsChange() {
   const n = Math.max(0, Math.min(32, Number(document.getElementById('numButtons').value)));
   buildBtnPinGrid(n);
+  buildEncTogglePicker(n);
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────
@@ -472,6 +550,7 @@ buildBtnPinGrid(14);
 buildMatrixPinGrid('matRowPinGrid', 4, 'R');
 buildMatrixPinGrid('matColPinGrid', 4, 'C');
 buildResetPicker();
+buildEncTogglePicker(14);
 setMode(false);
 updateZoneCountOptions();
 startDiscover(); // auto-discover on load

@@ -42,6 +42,7 @@ var (
 	rebootUUID    = mustUUID("bb010003-feed-dead-beef-cafebabe0001")
 	otaUUID       = mustUUID("bb010004-feed-dead-beef-cafebabe0001")
 	btnNotifyUUID = mustUUID("bb010005-feed-dead-beef-cafebabe0001")
+	encCtrlUUID   = mustUUID("bb010006-feed-dead-beef-cafebabe0001")
 	adapter       = bluetooth.DefaultAdapter
 )
 
@@ -88,6 +89,8 @@ type bleConn struct {
 	rebootChar    bluetooth.DeviceCharacteristic
 	otaChar       bluetooth.DeviceCharacteristic
 	btnNotifyChar bluetooth.DeviceCharacteristic
+	encCtrlChar   bluetooth.DeviceCharacteristic
+	encodersOn    bool // current runtime state, starts true
 	// Config JSON received via NOTIFY from the device (chunked, same framing as writes).
 	// The device pushes it 1 second after the client connects.
 	cfgChan chan string // delivers complete JSON after all chunks arrive
@@ -129,6 +132,7 @@ func main() {
 	mux.HandleFunc("/ota", handleOTA)
 	mux.HandleFunc("/clearcache", handleClearCache)
 	mux.HandleFunc("/debug/events", handleDebugEvents)
+	mux.HandleFunc("/encoders", handleEncoders)
 
 	go http.ListenAndServe("127.0.0.1:18080", mux)
 
@@ -287,6 +291,44 @@ func handleDebugEvents(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func handleEncoders(w http.ResponseWriter, r *http.Request) {
+	c := getConn()
+	if c == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Write([]byte(`{"error":"not connected"}`))
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	switch r.Method {
+	case http.MethodGet:
+		json.NewEncoder(w).Encode(map[string]any{"enabled": c.encodersOn})
+	case http.MethodPost:
+		var body struct {
+			Enabled bool `json:"enabled"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if c.encCtrlChar.UUID() != encCtrlUUID {
+			w.WriteHeader(http.StatusNotImplemented)
+			json.NewEncoder(w).Encode(map[string]any{"error": "firmware does not support runtime encoder toggle"})
+			return
+		}
+		val := byte(0)
+		if body.Enabled {
+			val = 1
+		}
+		if _, err := c.encCtrlChar.WriteWithoutResponse([]byte{val}); err != nil {
+			w.WriteHeader(http.StatusBadGateway)
+			json.NewEncoder(w).Encode(map[string]any{"error": err.Error()})
+			return
+		}
+		c.encodersOn = body.Enabled
+		json.NewEncoder(w).Encode(map[string]any{"ok": true, "enabled": c.encodersOn})
+	}
+}
+
 func handleOTA(w http.ResponseWriter, r *http.Request) {
 	c := getConn()
 	if c == nil {
@@ -385,8 +427,9 @@ func scanAndConnect() (*bleConn, error) {
 	}
 
 	c := &bleConn{
-		device:  device,
-		cfgChan: make(chan string, 1),
+		device:     device,
+		cfgChan:    make(chan string, 1),
+		encodersOn: true,
 	}
 	fmt.Printf("[scan] discovered %d characteristics:\n", len(chars))
 	for _, ch := range chars {
@@ -402,6 +445,8 @@ func scanAndConnect() (*bleConn, error) {
 			c.otaChar = ch
 		case btnNotifyUUID:
 			c.btnNotifyChar = ch
+		case encCtrlUUID:
+			c.encCtrlChar = ch
 		}
 	}
 	fmt.Printf("[scan] readChar assigned: %v\n", c.readChar.UUID().String())
