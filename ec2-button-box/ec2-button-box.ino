@@ -30,6 +30,7 @@ byte         physicalButtons[MAX_BUTTONS + MAX_ENC_BUTTONS];
 
 Enc::Encoder     encoders[NUM_OF_ENCODERS];
 volatile uint32_t buttonState    = 0;  // bitmask: bit i set = buttonPins[i] currently pressed
+volatile bool    encodersEnabled = true;  // toggled at runtime via BLE enc_ctrl characteristic
 
 // First physicalButtons index reserved for encoder buttons (after direct + matrix buttons)
 inline byte encBtnBase() {
@@ -52,6 +53,12 @@ void buttonTask(void*) {
           pBleGamepad->press(physicalButtons[i]);
           notifyButtonEvent(physicalButtons[i], true);
           dirty = true;
+          if (cfg.encoderToggleButton != 0 && cfg.encoderToggleButton == i + 1) {
+            encodersEnabled = !encodersEnabled;
+            #ifdef SERIAL_DEBUG
+              Serial.printf("[Enc Toggle] Encoders %s via button %d\n", encodersEnabled ? "enabled" : "disabled", i + 1);
+            #endif
+          }
           #ifdef SERIAL_DEBUG
             Serial.printf("Button %d pressed  (pin %d)\n", physicalButtons[i], cfg.buttonPins[i]);
           #endif
@@ -119,7 +126,7 @@ void buttonTask(void*) {
 
 void encoderTask(void*) {
   while (true) {
-    if (pBleGamepad->isConnected()) {
+    if (encodersEnabled && pBleGamepad->isConnected()) {
       for (int i = 0; i < NUM_OF_ENCODERS; i++) {
         Enc::Move m = encoders[i].read();
         if (m == Enc::none) continue;
@@ -149,7 +156,7 @@ void encoderZonesTask(void*) {
   int  position    = 0;
   bool resetActive = false;  // prevents repeated resets while combo is held
   while (true) {
-    if (pBleGamepad->isConnected()) {
+    if (encodersEnabled && pBleGamepad->isConnected()) {
       // Reset combo check
       uint32_t mask = cfg.encoderZoneResetMask;
       if (mask != 0 && (buttonState & mask) == mask) {

@@ -22,6 +22,8 @@ struct Config {
   // Bitmask of physical buttons (bit N = button N+1) that must all be held simultaneously
   // to reset the master encoder position to 0. 0 = feature disabled.
   uint32_t encoderZoneResetMask   = 0;
+  // Single button (1-based) that toggles encoder enable/disable on press. 0 = disabled.
+  uint8_t  encoderToggleButton    = 0;
   // Per-button GPIO input mode: 0 = INPUT_PULLUP (default), 1 = INPUT_PULLDOWN, 2 = INPUT
   // Pins 34/35/36/39 lack internal pull resistors — use 1 or 2 with an external resistor.
   uint8_t  buttonInputModes[32] = {};
@@ -60,6 +62,7 @@ inline Config loadConfig() {
   cfg.encoderZoneSteps       = prefs.getUInt("encZoneSteps",   cfg.encoderZoneSteps);
   cfg.encoderZoneCount       = prefs.getUInt("encZoneCount",   cfg.encoderZoneCount);
   cfg.encoderZoneResetMask   = prefs.getUInt("encResetMask",   cfg.encoderZoneResetMask);
+  cfg.encoderToggleButton    = prefs.getUChar("encToggleBtn",  cfg.encoderToggleButton);
   prefs.getBytes("btnModes", cfg.buttonInputModes, sizeof(cfg.buttonInputModes));
   prefs.getBytes("btnPins", cfg.buttonPins,  sizeof(cfg.buttonPins));
   prefs.getBytes("encPins", cfg.encoderPins, sizeof(cfg.encoderPins));
@@ -91,6 +94,7 @@ inline void saveConfig(const Config& cfg) {
   prefs.putUInt("encZoneSteps",   cfg.encoderZoneSteps);
   prefs.putUInt("encZoneCount",   cfg.encoderZoneCount);
   prefs.putUInt("encResetMask",   cfg.encoderZoneResetMask);
+  prefs.putUChar("encToggleBtn", cfg.encoderToggleButton);
   prefs.putBytes("btnModes",   cfg.buttonInputModes, sizeof(cfg.buttonInputModes));
   prefs.putBytes("btnPins",    cfg.buttonPins,     32);
   prefs.putBytes("encPins",    cfg.encoderPins,    sizeof(cfg.encoderPins));
@@ -125,6 +129,7 @@ inline String configToJson(const Config& cfg) {
   JsonArray resetArr = doc.createNestedArray("encoderZoneResetButtons");
   for (int i = 0; i < (int)cfg.numButtons; i++)
     if (cfg.encoderZoneResetMask & (1u << i)) resetArr.add(i + 1);
+  doc["encoderToggleButton"]    = cfg.encoderToggleButton;
   JsonArray imArr = doc.createNestedArray("buttonInputModes");
   for (int i = 0; i < (int)cfg.numButtons; i++) imArr.add(cfg.buttonInputModes[i]);
   JsonArray bpArr = doc.createNestedArray("buttonPins");
@@ -171,6 +176,7 @@ inline bool jsonToConfig(const String& json, Config& cfg) {
     for (int btn : doc["encoderZoneResetButtons"].as<JsonArray>())
       if (btn >= 1 && btn <= (int)cfg.numButtons) cfg.encoderZoneResetMask |= (1u << (btn - 1));
   }
+  if (doc.containsKey("encoderToggleButton"))    cfg.encoderToggleButton    = constrain(doc["encoderToggleButton"].as<int>(), 0, 32);
   if (doc.containsKey("useMatrix"))        cfg.useMatrix        = doc["useMatrix"].as<bool>();
   if (doc.containsKey("matrixDirectMode")) cfg.matrixDirectMode = doc["matrixDirectMode"].as<bool>();
   if (doc.containsKey("matrixRows"))       cfg.matrixRows       = constrain(doc["matrixRows"].as<int>(), 1, 8);

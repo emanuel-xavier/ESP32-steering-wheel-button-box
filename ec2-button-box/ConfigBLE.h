@@ -9,6 +9,7 @@
 //   reboot       (WRITE)  : bb010003  → any write triggers esp_restart()
 //   ota_trigger  (WRITE)  : bb010004  → any write enters OTA WiFi mode
 //   btn_events   (NOTIFY) : bb010005  → 2-byte packets: [press(1)/release(0), btnNumber]
+//   enc_ctrl     (WRITE)  : bb010006  → 0x00 = disable encoders, 0x01 = enable encoders
 
 #include <NimBLEDevice.h>
 #include "Config.h"
@@ -20,6 +21,10 @@
 #define BB_CFG_REBOOT_UUID   "bb010003-feed-dead-beef-cafebabe0001"
 #define BB_OTA_TRIGGER_UUID  "bb010004-feed-dead-beef-cafebabe0001"
 #define BB_BTN_NOTIFY_UUID   "bb010005-feed-dead-beef-cafebabe0001"
+#define BB_ENC_CTRL_UUID     "bb010006-feed-dead-beef-cafebabe0001"
+
+// Defined in ec2-button-box.ino — toggled at runtime via BB_ENC_CTRL_UUID writes.
+extern volatile bool encodersEnabled;
 
 // Global pointers set during registerConfigService().
 static NimBLECharacteristic* _pBtnNotify = nullptr;
@@ -156,6 +161,17 @@ class _BbOtaCallbacks : public NimBLECharacteristicCallbacks {
   }
 };
 
+class _BbEncCtrlCallbacks : public NimBLECharacteristicCallbacks {
+  void onWrite(NimBLECharacteristic* pChar, NimBLEConnInfo&) override {
+    std::string val = pChar->getValue();
+    if (val.empty()) return;
+    encodersEnabled = (val[0] != 0);
+    #ifdef SERIAL_DEBUG
+      Serial.printf("[BLE Config] Encoders %s at runtime.\n", encodersEnabled ? "enabled" : "disabled");
+    #endif
+  }
+};
+
 // Register the config GATT service on the NimBLE server.
 // MUST be called BEFORE BleGamepad::begin() so all services are finalized
 // together when the NimBLE host syncs.
@@ -182,6 +198,10 @@ inline void registerConfigService(NimBLEServer* pServer, const Config& bootCfg) 
 
   _pBtnNotify = pService->createCharacteristic(
     BB_BTN_NOTIFY_UUID, NIMBLE_PROPERTY::NOTIFY);
+
+  NimBLECharacteristic* pEncCtrl = pService->createCharacteristic(
+    BB_ENC_CTRL_UUID, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
+  pEncCtrl->setCallbacks(new _BbEncCtrlCallbacks());
 
   pService->start();
 
