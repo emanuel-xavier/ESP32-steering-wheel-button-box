@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -341,8 +340,7 @@ func (a *App) scanAndConnect() (*bleConn, error) {
 			if press {
 				evt = "press"
 			}
-			msg, _ := json.Marshal(map[string]any{"btn": btn, "evt": evt})
-			runtime.EventsEmit(a.ctx, "btn-event", string(msg))
+			runtime.EventsEmit(a.ctx, "btn-event", map[string]any{"btn": btn, "evt": evt})
 		}); err != nil {
 			fmt.Printf("[btn notify] EnableNotifications failed: %v\n", err)
 		}

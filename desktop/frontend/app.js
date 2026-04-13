@@ -558,7 +558,7 @@ function startDebugStream() {
     const press = evt === 'press';
     if (press) {
       _pressedBtns.add(btn);
-      _recentBtns.push(btn);
+      if (_recentBtns[_recentBtns.length - 1] !== btn) _recentBtns.push(btn);
     } else {
       _pressedBtns.delete(btn);
     }
